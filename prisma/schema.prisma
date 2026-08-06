@@ -1,0 +1,241 @@
+// Prisma-Schema der Inventur-App.
+// Doku: https://www.prisma.io/docs
+//
+// Konventionen in diesem Schema:
+// - Modelle heissen PascalCase, Tabellen und Spalten liegen per @map/@@map in
+//   lowercase snake_case. Postgres faltet unquotierte Bezeichner auf Kleinschrift;
+//   gemischte Schreibweise müsste sonst überall gequotet werden.
+// - Primärschlüssel sind UUIDv7 (zeitgeordnet). Anders als UUIDv4 streuen sie
+//   Inserts nicht über den ganzen Index.
+// - Geldbeträge sind Int in Cent. Nie Float, nie Decimal für Geld.
+// - Mengen sind Decimal(10,2), damit halbe Gebinde darstellbar bleiben. Einzige
+//   Ausnahme ist Kassenartikel.einheitenProVerkauf mit Decimal(10,3).
+// - Jede Tabelle trägt betriebId und einen Index darauf. Wo ein zusammengesetzter
+//   Index oder eine Unique-Constraint mit betriebId beginnt, deckt dessen
+//   Leftmost-Prefix die Abfrage nach betriebId bereits ab — ein zusätzlicher
+//   Einzelindex wäre nur Schreiblast.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Ab Prisma 7 gehört hier keine `url` mehr hin:
+  // - Migrationen (CLI) nutzen DIRECT_URL aus prisma.config.ts
+  // - die Laufzeit nutzt DATABASE_URL über den Driver Adapter in src/lib/prisma.ts
+}
+
+// Wichtig: Tabellen im Schema `public` sind über die Supabase Data API erreichbar.
+// Für jede solche Tabelle RLS aktivieren und passende Policies anlegen — Prisma
+// selbst umgeht RLS, da es mit der Rolle `prisma` verbindet.
+
+enum Einheit {
+  FLASCHE
+  FASS
+  LITER
+
+  @@map("einheit")
+}
+
+enum ZaehlungStatus {
+  OFFEN
+  ABGESCHLOSSEN
+
+  @@map("zaehlung_status")
+}
+
+// ---------------------------------------------------------------------------
+// Mandant und Benutzer
+// ---------------------------------------------------------------------------
+
+model Betrieb {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  name       String
+  angelegtAm DateTime @default(now()) @map("angelegt_am") @db.Timestamptz(6)
+
+  benutzer         Benutzer[]
+  artikel          Artikel[]
+  kassenartikel    Kassenartikel[]
+  zaehlungen       Zaehlung[]
+  zaehlpositionen  Zaehlposition[]
+  lieferungen      Lieferung[]
+  lieferpositionen Lieferposition[]
+  umsatzimporte    Umsatzimport[]
+  umsatzpositionen Umsatzposition[]
+
+  @@map("betrieb")
+}
+
+model Benutzer {
+  id        String @id @default(uuid(7)) @db.Uuid
+  betriebId String @map("betrieb_id") @db.Uuid
+  email     String @unique
+  rolle     String
+
+  betrieb Betrieb @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+
+  @@index([betriebId])
+  @@map("benutzer")
+}
+
+// ---------------------------------------------------------------------------
+// Stammdaten
+// ---------------------------------------------------------------------------
+
+/// Artikel werden nie gelöscht, sondern über `aktiv = false` stillgelegt.
+/// Deshalb zeigt keine Relation mit onDelete: Cascade auf diese Tabelle.
+model Artikel {
+  id                 String  @id @default(uuid(7)) @db.Uuid
+  betriebId          String  @map("betrieb_id") @db.Uuid
+  name               String
+  /// Anzeigetext des Gebindes, z. B. "24 x 0,33".
+  gebindeText        String  @map("gebinde_text")
+  /// Anzahl Einheiten je Gebinde, z. B. 24.
+  packungsgroesse    Int
+  einheit            Einheit
+  /// Einkaufspreis je Gebinde in Cent.
+  ekPreisGebindeCent Int     @map("ek_preis_gebinde_cent")
+  aktiv              Boolean @default(true)
+  kategorie          String
+  sortierung         Int
+
+  betrieb          Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  kassenartikel    Kassenartikel[]
+  zaehlpositionen  Zaehlposition[]
+  lieferpositionen Lieferposition[]
+
+  // Deckt sowohl die Mandantenabfrage (Leftmost-Prefix) als auch die sortierte
+  // Liste der aktiven Artikel ab.
+  @@index([betriebId, aktiv, sortierung])
+  @@map("artikel")
+}
+
+/// Bezeichnung aus dem Kassensystem und ihre Zuordnung zu einem Artikel.
+/// `artikelId` bleibt leer, solange die Zuordnung nicht getroffen ist.
+model Kassenartikel {
+  id                  String  @id @default(uuid(7)) @db.Uuid
+  betriebId           String  @map("betrieb_id") @db.Uuid
+  posBezeichnung      String  @map("pos_bezeichnung")
+  artikelId           String? @map("artikel_id") @db.Uuid
+  /// Wie viele Artikel-Einheiten ein Verkauf abbucht, z. B. 0,5 für ein Glas.
+  /// Drei Nachkommastellen, damit auch Ausschankmengen wie 0,033 l aufgehen.
+  einheitenProVerkauf Decimal @map("einheiten_pro_verkauf") @db.Decimal(10, 3)
+  bestaetigt          Boolean @default(false)
+
+  betrieb Betrieb  @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  artikel Artikel? @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+
+  // Die Unique-Constraint indiziert betriebId bereits als führende Spalte.
+  @@unique([betriebId, posBezeichnung])
+  @@index([artikelId])
+  @@map("kassenartikel")
+}
+
+// ---------------------------------------------------------------------------
+// Zählung
+// ---------------------------------------------------------------------------
+
+model Zaehlung {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  betriebId String         @map("betrieb_id") @db.Uuid
+  datum     DateTime       @db.Date
+  status    ZaehlungStatus @default(OFFEN)
+
+  betrieb    Betrieb         @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  positionen Zaehlposition[]
+
+  @@index([betriebId, datum])
+  @@map("zaehlung")
+}
+
+model Zaehlposition {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  betriebId      String   @map("betrieb_id") @db.Uuid
+  zaehlungId     String   @map("zaehlung_id") @db.Uuid
+  artikelId      String   @map("artikel_id") @db.Uuid
+  anzahlGebinde  Decimal  @map("anzahl_gebinde") @db.Decimal(10, 2)
+  anzahlFlaschen Decimal  @map("anzahl_flaschen") @db.Decimal(10, 2)
+  gezaehltAm     DateTime @default(now()) @map("gezaehlt_am") @db.Timestamptz(6)
+
+  betrieb  Betrieb  @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  zaehlung Zaehlung @relation(fields: [zaehlungId], references: [id], onDelete: Cascade)
+  artikel  Artikel  @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+
+  // Indiziert zugleich zaehlungId als führende Spalte.
+  @@unique([zaehlungId, artikelId])
+  @@index([betriebId])
+  @@index([artikelId])
+  @@map("zaehlposition")
+}
+
+// ---------------------------------------------------------------------------
+// Lieferungen
+// ---------------------------------------------------------------------------
+
+model Lieferung {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  betriebId String   @map("betrieb_id") @db.Uuid
+  datum     DateTime @db.Date
+  lieferant String
+  belegNr   String   @map("beleg_nr")
+
+  betrieb    Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  positionen Lieferposition[]
+
+  @@index([betriebId, datum])
+  @@map("lieferung")
+}
+
+model Lieferposition {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  betriebId     String  @map("betrieb_id") @db.Uuid
+  lieferungId   String  @map("lieferung_id") @db.Uuid
+  artikelId     String  @map("artikel_id") @db.Uuid
+  anzahlGebinde Decimal @map("anzahl_gebinde") @db.Decimal(10, 2)
+
+  betrieb   Betrieb   @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  lieferung Lieferung @relation(fields: [lieferungId], references: [id], onDelete: Cascade)
+  artikel   Artikel   @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+
+  @@index([betriebId])
+  @@index([lieferungId])
+  @@index([artikelId])
+  @@map("lieferposition")
+}
+
+// ---------------------------------------------------------------------------
+// Umsatzimport aus dem Kassensystem
+// ---------------------------------------------------------------------------
+
+model Umsatzimport {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  betriebId   String   @map("betrieb_id") @db.Uuid
+  zeitraumVon DateTime @map("zeitraum_von") @db.Timestamptz(6)
+  zeitraumBis DateTime @map("zeitraum_bis") @db.Timestamptz(6)
+  dateiname   String
+
+  betrieb    Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  positionen Umsatzposition[]
+
+  @@index([betriebId, zeitraumVon])
+  @@map("umsatzimport")
+}
+
+/// Rohzeile aus dem Kassenexport. `posBezeichnung` bleibt als Text stehen und
+/// wird erst über Kassenartikel auf einen Artikel abgebildet.
+model Umsatzposition {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  betriebId      String  @map("betrieb_id") @db.Uuid
+  umsatzimportId String  @map("umsatzimport_id") @db.Uuid
+  posBezeichnung String  @map("pos_bezeichnung")
+  menge          Decimal @db.Decimal(10, 2)
+
+  betrieb      Betrieb      @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  umsatzimport Umsatzimport @relation(fields: [umsatzimportId], references: [id], onDelete: Cascade)
+
+  @@index([betriebId])
+  @@index([umsatzimportId])
+  @@map("umsatzposition")
+}
