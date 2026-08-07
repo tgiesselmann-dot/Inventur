@@ -14,4 +14,11 @@ export default defineConfig({
   // Die CLI (migrate, db push, studio) läuft über den Session-Pooler auf Port 5432.
   // Der Transaction-Pooler aus DATABASE_URL verträgt kein DDL mit Advisory Locks.
   datasource: { url: env('DIRECT_URL') },
+  migrations: {
+    // tsx statt node: der generierte Client importiert seine Module ohne
+    // Dateiendung, damit kommt Nodes eigenes TypeScript-Stripping nicht zurecht.
+    // .mts, weil dieses Paket kein "type": "module" trägt — als .ts liefe das
+    // Skript als CommonJS und vertrüge kein top-level await.
+    seed: 'tsx prisma/seed.mts',
+  },
 })

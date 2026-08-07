@@ -138,7 +138,9 @@ model Artikel {
   gebindeart           Gebindeart
   zaehlmodus           Zaehlmodus
   /// Einkaufspreis in Cent. Der Bezug steht in ekPreisBezug.
-  ekPreisCent          Int          @map("ek_preis_cent")
+  /// null heisst "Preis nicht bekannt" und ist ausdrücklich nicht 0: ein solcher
+  /// Artikel wird gezählt, sein Bestand lässt sich aber nicht bewerten.
+  ekPreisCent          Int?         @map("ek_preis_cent")
   ekPreisBezug         EkPreisBezug @map("ek_preis_bezug")
   /// false für portioniert verkaufte Artikel (Spirituosen, Likör): sie werden
   /// gezählt, aber ihr Sollbestand taugt nicht zur Schwundrechnung.

@@ -124,6 +124,11 @@ describe('ekProEinheitCent', () => {
     const inEuro: BepreisterArtikel = { ...kastenBier, ekPreisCent: 17.99 }
     expect(() => ekProEinheitCent(inEuro)).toThrow(/ekPreisCent/)
   })
+
+  it('gibt null zurück, wenn kein Preis hinterlegt ist', () => {
+    // Die 3-Freunde-Weine aus dem Artikelstamm: Preis unbekannt, nicht 0.
+    expect(ekProEinheitCent({ ...kartonWein, ekPreisCent: null })).toBeNull()
+  })
 })
 
 describe('wertCent', () => {
@@ -152,6 +157,12 @@ describe('wertCent', () => {
   it('nimmt das Ergebnis von gesamtEinheiten direkt entgegen', () => {
     const einheiten = gesamtEinheiten(kastenBier, 2, 5)
     expect(wertCent(kastenBier, einheiten)).toBe(3973) // 1799 x 53 / 24 = 3972,79...
+  })
+
+  it('gibt null statt 0 zurück, wenn kein Preis hinterlegt ist', () => {
+    // Der Unterschied trägt die ganze Entscheidung: 0 würde in einer Summe
+    // untergehen, null zwingt die Auswertung, den Fall zu benennen.
+    expect(wertCent({ ...kartonWein, ekPreisCent: null }, 12)).toBeNull()
   })
 })
 

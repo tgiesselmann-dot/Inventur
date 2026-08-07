@@ -34,9 +34,12 @@ export type ZaehlbarerArtikel = {
   einheitenProGebinde: number
 }
 
-/** Die Felder eines Artikels, die für die Bewertung gebraucht werden. */
+/**
+ * Die Felder eines Artikels, die für die Bewertung gebraucht werden.
+ * `ekPreisCent` darf null sein — dann ist der Preis nicht bekannt.
+ */
 export type BepreisterArtikel = {
-  ekPreisCent: number
+  ekPreisCent: number | null
   ekPreisBezug: EkPreisBezug
   einheitenProGebinde: number
 }
@@ -83,8 +86,9 @@ function gebindegroesse(artikel: { einheitenProGebinde: number }): number {
   return einheitenProGebinde
 }
 
-function preisCent(artikel: { ekPreisCent: number }): number {
+function preisCent(artikel: { ekPreisCent: number | null }): number | null {
   const { ekPreisCent } = artikel
+  if (ekPreisCent === null) return null
   if (!Number.isInteger(ekPreisCent) || ekPreisCent < 0) {
     throw new EinheitenFehler(
       `ekPreisCent muss eine ganze Zahl >= 0 sein (Cent, nie Euro als Kommazahl), ist aber ${String(ekPreisCent)}`,
@@ -149,13 +153,15 @@ export function gesamtEinheiten(
 
 /**
  * Einkaufspreis einer einzelnen Einheit in Cent, kaufmännisch gerundet.
+ * `null`, wenn der Artikel keinen Preis hinterlegt hat.
  *
  * Der gerundete Wert ist zur Anzeige gedacht. Für Bestandswerte `wertCent`
  * verwenden — das rechnet ungerundet weiter und vermeidet, dass sich der halbe
  * Cent je Einheit über den Bestand summiert.
  */
-export function ekProEinheitCent(artikel: BepreisterArtikel): number {
+export function ekProEinheitCent(artikel: BepreisterArtikel): number | null {
   const preis = preisCent(artikel)
+  if (preis === null) return null
 
   switch (artikel.ekPreisBezug) {
     case EkPreisBezug.PRO_EINHEIT:
@@ -172,16 +178,19 @@ export function ekProEinheitCent(artikel: BepreisterArtikel): number {
 }
 
 /**
- * Wert einer Menge Einheiten in Cent.
+ * Wert einer Menge Einheiten in Cent. `null`, wenn der Artikel keinen Preis
+ * hinterlegt hat — dieser Bestand ist gezählt, aber nicht bewertbar. Summen über
+ * mehrere Artikel müssen den Fall benennen, statt ihn als 0 mitzuzählen.
  *
  * Bei `PRO_GEBINDE` wird der Gebindepreis ungerundet auf die Einheiten verteilt
  * und erst das Ergebnis gerundet. Ein voller 24er-Kasten zu 17,99 EUR ist damit
  * wieder exakt 1799 Cent wert — über `ekProEinheitCent` (75) gerechnet wären es
  * 1800, und dieser Cent wüchse mit jedem Kasten im Lager.
  */
-export function wertCent(artikel: BepreisterArtikel, einheiten: Menge): number {
+export function wertCent(artikel: BepreisterArtikel, einheiten: Menge): number | null {
   const preis = preisCent(artikel)
   const menge = zuDecimal(einheiten, 'einheiten')
+  if (preis === null) return null
 
   switch (artikel.ekPreisBezug) {
     case EkPreisBezug.PRO_EINHEIT:
