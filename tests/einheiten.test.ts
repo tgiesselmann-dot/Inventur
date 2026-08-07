@@ -172,7 +172,10 @@ describe('Umrechnung existiert nur an einer Stelle', () => {
   // mit einheitenProGebinde gerechnet wird — dem Feld, über das die zweite
   // Implementierung zwangsläufig laufen müsste.
   const srcVerzeichnis = fileURLToPath(new URL('../src', import.meta.url))
-  const erlaubt = ['lib/einheiten.ts']
+  // lib/artikelimport.ts setzt das Feld beim Anlegen eines Stammsatzes, es
+  // rechnet nicht damit: es liest die Gebindegrösse aus der Datei und schreibt
+  // sie hin. Eine Division steht dort nicht und darf dort nicht stehen.
+  const erlaubt = ['lib/einheiten.ts', 'lib/artikelimport.ts']
 
   function tsDateien(verzeichnis: string): string[] {
     return readdirSync(verzeichnis, { withFileTypes: true }).flatMap((eintrag) => {
@@ -191,5 +194,12 @@ describe('Umrechnung existiert nur an einer Stelle', () => {
       .filter((pfad) => !erlaubt.includes(pfad))
 
     expect(treffer).toEqual([])
+  })
+
+  it('rechnet auch im Artikelimport nicht mit einheitenProGebinde, sondern setzt es nur', () => {
+    // Hält die Ausnahme oben eng: sobald dort ein Produkt oder ein Quotient mit
+    // dem Feld auftaucht, ist die zweite Rechenstelle da.
+    const quelle = readFileSync(join(srcVerzeichnis, 'lib/artikelimport.ts'), 'utf8')
+    expect(quelle).not.toMatch(/einheitenProGebinde\s*[*/]|[*/]\s*einheitenProGebinde/)
   })
 })
