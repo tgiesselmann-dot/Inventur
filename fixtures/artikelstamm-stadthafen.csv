@@ -1,0 +1,100 @@
+﻿kategorie;name;gebinde_text;packungsgroesse;einheit;gebindegroesse_liter;ek_preis_gebinde_eur;sortierung;excel_zeile;original_excel;pruefen
+Wasser;Gerolsteiner Sprudel;24 x 0,25;24;FLASCHE;0,25;8,58;10;2;Gerolsteiner Sprudel;
+Wasser;Gerolsteiner Still;24 x 0,25;24;FLASCHE;0,25;8,58;20;3;Gerolsteiner Still;
+Wasser;Gerolsteiner Sprudel;12 x 0,75;12;FLASCHE;0,75;8,33;30;4;Gerolsteiner Sprudel ;
+Wasser;Gerolsteiner Still;12 x 0,75;12;FLASCHE;0,75;8,33;40;5;Gerolsteiner Still;
+Wasser;Salinger Mineral (Perso- und Mischwasser);12 x 0,75;12;FLASCHE;0,75;4,5;50;6;Salinger Mineral (Perso- und Mischwasser);
+Wasser;Salinger Still;12 x 0,75;12;FLASCHE;0,75;4,5;60;7;Salinger still;
+Softdrinks;Coca Cola;12 x 1,0;12;FLASCHE;1,0;14,45;70;8;Coca Cola;
+Softdrinks;Coke Zero;12 x 1,0;12;FLASCHE;1,0;14,45;80;9;Coke Zero;
+Softdrinks;Fanta;12 x 1,0;12;FLASCHE;1,0;14,45;90;10;Fanta;
+Softdrinks;Sprite;12 x 1,0;12;FLASCHE;1,0;14,45;100;11;Sprite;
+Softdrinks;Coca Cola;24 x 0,33;24;FLASCHE;0,33;18,59;110;12;Coca Cola;
+Softdrinks;Coke Zero;24 x 0,33;24;FLASCHE;0,33;18,59;120;13;Coke Zero;
+Softdrinks;Fanta;24 x 0,33;24;FLASCHE;0,33;18,59;130;14;Fanta;
+Softdrinks;Sprite;24 x 0,33;24;FLASCHE;0,33;18,59;140;15;Sprite;
+Softdrinks;Fuze Eistee Lemon;24 x 0,25;24;FLASCHE;0,25;21,47;150;16;Fuze Eistee Lemon;
+Softdrinks;Fuze Eistee Peach;24 x 0,25;24;FLASCHE;0,25;21,47;160;17;Fuze Eistee Peach;
+Softdrinks;Veltins Fassbrause Zitrone;24 x 0,33;24;FLASCHE;0,33;15,66;170;18;Veltins Fassbrause Zitrone;
+Softdrinks;Veltins Fassbrause Holunder;24 x 0,33;24;FLASCHE;0,33;15,66;180;19;Veltins Fassbrause Holunder;
+Softdrinks;Veltins Fassbrause Maracuja;24 x 0,33;24;FLASCHE;0,33;15,66;190;20;Veltins Fassbrause Maracuja;
+Softdrinks;Veltins Fassbrause Cola Orange;24 x 0,33;24;FLASCHE;0,33;15,66;200;21;Veltins Fassbrause Cola Orange;
+Softdrinks;Veltins Fassbrause Eistee Pfirsich;24 x 0,33;24;FLASCHE;0,33;15,66;210;22;Veltins Fassbrause Eistee Pfirsich;
+Softdrinks;Granini Limo Grapefruit-Cranberry;24 x 0,33;24;FLASCHE;0,33;17,99;220;23;Granini Limo Grapefruit-Cranberry 0,33l;
+Softdrinks;Granini Limo Orange-Lemongras;24 x 0,33;24;FLASCHE;0,33;17,99;230;24;Granini Limo Orange-Lemongras;
+Softdrinks;Granini Limo Zitrone-Limette;24 x 0,33;24;FLASCHE;0,33;17,99;240;25;Granini Limo Zitrone-Limette;
+Softdrinks;Granini Schorle Kirsche;24 x 0,33;24;FLASCHE;0,33;18,99;250;26;Granini Schorle Kirsche;
+Softdrinks;Granini Schorle Maracuja;24 x 0,33;24;FLASCHE;0,33;18,99;260;27;Granini Schorle Maracuja;
+Softdrinks;Granini Schorle Rhabarber;24 x 0,33;24;FLASCHE;0,33;18,99;270;28;Granini Schorle Rhabarber ;
+Softdrinks;Granini Schorle Apfel;24 x 0,33;24;FLASCHE;0,33;18,99;280;29;Granini Schorle Apfel ;
+Saefte;Granini Saft Orange;6 x 1,0;6;FLASCHE;1,0;15,76;290;30;Granini Saft Orange;
+Saefte;Granini Saft Apfel;6 x 1,0;6;FLASCHE;1,0;12,3;300;31;Granini Saft Apfel;
+Saefte;Granini Saft Maracuja;6 x 1,0;6;FLASCHE;1,0;16,63;310;32;Granini Saft Maracuja;
+Saefte;Granini Saft Kirsche;6 x 1,0;6;FLASCHE;1,0;18,63;320;33;Granini Saft Kirsche;
+Premix;Granini Saft Mai Tai;6 x 1,0;6;FLASCHE;1,0;19,65;330;34;Granini Saft Mai Tai;
+Premix;Granini Saft Mojito;6 x 1,0;6;FLASCHE;1,0;19,65;340;35;Granini Saft Mojito;
+Premix;Granini Saft Pina Colada;6 x 1,0;6;FLASCHE;1,0;19,65;350;36;Granini Saft Pina Colada;
+Premix;Granini Saft Sex on the beach;6 x 1,0;6;FLASCHE;1,0;19,65;360;37;Granini Saft Sex on the beach;
+Premix;Granini Saft Porn Star;6 x 1,0;6;FLASCHE;1,0;19,65;370;38;Granini Saft Porn Star;
+Softdrinks;Schweppes Bitter Lemon;6 x 1,0;6;FLASCHE;1,0;10,7;380;39;Schweppes Bitter Lemon;
+Softdrinks;Schweppes Ginger Ale;6 x 1,0;6;FLASCHE;1,0;10,7;390;40;Schweppes Ginger Ale ;
+Softdrinks;Schweppes Tonic Water;6 x 1,0;6;FLASCHE;1,0;10,7;400;41;Schweppes Tonic Water ;
+Softdrinks;Schweppes Wild Berry;6 x 1,0;6;FLASCHE;1,0;10,7;410;42;Schweppes Wild Berry;
+Softdrinks;Schweppes White Peach;6 x 1,0;6;FLASCHE;1,0;10,7;420;43;Schweppes White Peach;
+Energy;Redbull;24 x 0,25;24;FLASCHE;0,25;23,99;430;44;Redbull ;
+Energy;Redbull Zero;24 x 0,25;24;FLASCHE;0,25;23,99;440;45;Redbull Zero ;
+Energy;Redbull Edition;24 x 0,25;24;FLASCHE;0,25;23,99;450;46;Redbull Edition;
+Bier Fass;Heineken;1 x 30,0;1;FASS;30,0;85,95;460;47;Heineken ;
+Bier Fass;Veltins;1 x 10,0;1;FASS;10,0;24,5;470;48;Veltins;
+Bier Fass;Veltins;1 x 30,0;1;FASS;30,0;72,75;480;49;Veltins;
+Bier Fass;Veltins;1 x 50,0;1;FASS;50,0;117,9;490;50;Veltins;
+Bier Flasche;Desperados;24 x 0,33;24;FLASCHE;0,33;26,5;500;51;Desperados;
+Bier Flasche;Heineken;24 x 0,33;24;FLASCHE;0,33;20,15;510;52;Heineken ;
+Bier Flasche;Puelleken;24 x 0,33;24;FLASCHE;0,33;14,8;520;53;Pülleken ;
+Bier Flasche;Zitroenken von Puelleken;24 x 0,33;24;FLASCHE;0,33;14,8;530;54;Zitrönken von Pülleken ;
+Bier Flasche;Veltins Design Steini;20 x 0,33;20;FLASCHE;0,33;13,7;540;55;Veltins Design Steini;
+Bier Flasche;Veltins Helles Lager;24 x 0,275;24;FLASCHE;0,275;14,2;550;56;Veltins Helles Lager;
+Bier Flasche;Veltins Radler;24 x 0,33;24;FLASCHE;0,33;15,66;560;57;Veltins Radler ;
+Bier Flasche;Veltins 0,00%;24 x 0,33;24;FLASCHE;0,33;15,66;570;58;Veltins 0,00%;
+Bier Flasche;Veltins Radler 0,00%;24 x 0,33;24;FLASCHE;0,33;15,66;580;59;Veltins Radler 0,00%;
+Bier Flasche;Maisels;20 x 0,5;20;FLASCHE;0,5;18,95;590;60;Maisels;
+Bier Flasche;Maisels 0,00%;20 x 0,5;20;FLASCHE;0,5;18,95;600;61;Maisels  0,00%;
+Aperitif;Aperol;1 x 1,0;1;FLASCHE;1,0;13,45;610;62;Aperol ;
+Aperitif;Lillet Blanc;1 x 0,7;1;FLASCHE;0,7;11,95;620;63;Lillet Blanc;
+Aperitif;Sarti Spritz;1 x 0,7;1;FLASCHE;0,7;13,45;630;64;Sarti Spritz ;
+Aperitif;Campari;1 x 1,0;1;FLASCHE;1,0;17,99;640;65;Campari;
+Aperitif;Limoncello Scavi & Ray;1 x 0,7;1;FLASCHE;0,7;8,95;650;66;Limoncello Scavi & Ray;
+Aperitif;Espresso Martini Premix 42below Tails;1 x 1,0;1;FLASCHE;1,0;16,9;660;67;Espresso Martini Premix 42below Tails;
+Spirituosen;Dockside Vodka;1 x 0,7;1;FLASCHE;0,7;8,49;670;68;Dockside Vodka;
+Spirituosen;Dockside Vodka;1 x 0,5;1;FLASCHE;0,5;6,99;680;69;Dockside Vodka;
+Spirituosen;Duenenbrand Rum;1 x 0,5;1;FLASCHE;0,5;6,49;690;70;Dünenbrand Rum;
+Spirituosen;Sudmare Gin;1 x 0,7;1;FLASCHE;0,7;7,99;700;71;Sudmare Gin;
+Aperitif;Ramazzotti;1 x 1,0;1;FLASCHE;1,0;14,9;710;72;Ramazzotti;
+Likoer;Williamsbirne Doerlemann;1 x 0,7;1;FLASCHE;0,7;16,95;720;73;Williamsbirne Dörlemann?;
+Likoer;Pfeffi Doerlemann;1 x 0,7;1;FLASCHE;0,7;12;730;74;Pfeffi Dörlemann;
+Likoer;Choco Praline Doerlemann;1 x 0,7;1;FLASCHE;0,7;16,44;740;75;Choco Praline Dörlemann;
+Wein;Lergenmueller Grauburgunder;1 x 0,75;1;FLASCHE;0,75;4,99;750;76;Lergenmüller Grauburgunder;Gezaehlt und bepreist in Flaschen, geliefert als 6er - packungsgroesse auf 1 gesetzt
+Wein;Lergenmueller Rose Saigner;1 x 0,75;1;FLASCHE;0,75;5,2;760;77;Lergenmüller Rosé Saigner ;Gezaehlt und bepreist in Flaschen, geliefert als 6er - packungsgroesse auf 1 gesetzt
+Sekt;Leonardo Prosecco (zum mischen);1 x 0,75;1;FLASCHE;0,75;2,55;770;78;Leonardo Prosecco (zum mischen);Gezaehlt und bepreist in Flaschen, geliefert als 6er - packungsgroesse auf 1 gesetzt
+Champagner;Moet ( Braun );1 x 0,75;1;FLASCHE;0,75;35,9;780;79; Moet ( Braun );
+Champagner;Moet Rose;1 x 0,75;1;FLASCHE;0,75;49,95;790;80;Moet Rosé;
+Champagner;Moet Ice;1 x 0,75;1;FLASCHE;0,75;42,99;800;81;Moet Ice;
+Wein;Pfaffmann Rose;1 x 0,75;1;FLASCHE;0,75;5,2;810;82;Pfaffmann Rose ;"Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D"
+Wein;Pfaffmann Grauburgunder;1 x 0,75;1;FLASCHE;0,75;4,99;820;83;Pfaffmann Graub.;"Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D"
+Saefte;Granini Saft Rhabarber;6 x 1;6;FLASCHE;1;18;830;84;Granini Saft Rharbaber;Formel teilt durch 24, Gebinde sagt 6 -> Differenz falsch
+Barzutat;Lime Juice;1 x 0,7;1;FLASCHE;0,7;4,94;840;85;Lime Juice;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Saefte;Mueller Kirschsaft;6 x 1;6;FLASCHE;1;14,04;850;86;Müller Kirschsaft;Formel teilt durch 24, Gebinde sagt 6 -> Differenz falsch
+Aperitif;Martini Floreale;1 x 0,7;1;FLASCHE;0,7;9,24;860;87;Martini Floreale ;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Spirituosen;Bacuba Rum Hell;1 x 1,0;1;FLASCHE;1,0;9,4;870;88;Bacuba Rum Hell;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Spirituosen;Bacuba Rum Dunkel;1 x 1,0;1;FLASCHE;1,0;9,4;880;89;Bacuba Rum Dunkel;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Spirituosen;43er;1 x 1,0;1;FLASCHE;1,0;15,44;890;90;43er;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Sekt;Burg Schoeneck Sekt Trocken;1 x 0,75;1;FLASCHE;0,75;4,49;900;91;Burg Schöneck Sekt Trocken;"Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D"
+Sekt;Burg Schoeneck Sekt Halbtrocken;1 x 0,75;1;FLASCHE;0,75;4,49;910;92;Burg Schöneck Sekt Halbrocken;"Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D"
+Aperitif;Ramazzotti Rosato;1 x 0,7;1;FLASCHE;0,7;15,44;920;93;Ramazzotti Rosato ;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Aperitif;Averna;1 x 1,0;1;FLASCHE;1,0;14,45;930;94;Averna ;Formel teilt durch 24, Gebinde sagt 1 -> Differenz falsch
+Aperitif;Pampelle;1 x 0,7;1;FLASCHE;0,7;15,9;940;95;Pampelle ;"Flaschengroesse 0,7 angenommen; Differenzformel in der Excel korrigieren: =G-D"
+Softdrinks;Fassbrause Pink Grapefruit;24 x 0,33;24;FLASCHE;0,33;15,66;950;96;Fassbrause Pink Grapefruit;Keine Differenzformel hinterlegt
+Likoer;Maracuja-Vanille Likoer;1 x 0,7;1;FLASCHE;0,7;8,52;960;101;Maracuja - Vanile ;Keine Differenzformel hinterlegt
+Wein;3-Freunde Weissburgunder;1 x 0,75;1;FLASCHE;0,75;;970;102;3-Freunde Weißburgunder;"Keine Differenzformel hinterlegt; Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D; EK-PREIS FEHLT - bitte ergaenzen"
+Wein;3-Freunde Rose;1 x 0,75;1;FLASCHE;0,75;;980;103;3-Freunde Rose;"Keine Differenzformel hinterlegt; Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D; EK-PREIS FEHLT - bitte ergaenzen"
+Wein;3-Freunde Sauvignon Blanc;1 x 0,75;1;FLASCHE;0,75;;990;104;3-Freunde Sauvignon Blanc;"Keine Differenzformel hinterlegt; Flaschengroesse 0,75 angenommen; Differenzformel in der Excel korrigieren: =G-D; EK-PREIS FEHLT - bitte ergaenzen"
