@@ -8,12 +8,16 @@
 // - Primärschlüssel sind UUIDv7 (zeitgeordnet). Anders als UUIDv4 streuen sie
 //   Inserts nicht über den ganzen Index.
 // - Geldbeträge sind Int in Cent. Nie Float, nie Decimal für Geld.
-// - Mengen sind Decimal(10,2), damit halbe Gebinde darstellbar bleiben. Einzige
-//   Ausnahme ist Kassenartikel.einheitenProVerkauf mit Decimal(10,3).
+// - Gezählte und gelieferte Mengen sind Decimal(10,2), damit halbe Gebinde
+//   darstellbar bleiben. Ausschankmengen (Kassenartikel.einheitenProVerkauf,
+//   Artikel.einheitsgroesseLiter) haben drei Nachkommastellen, sonst liesse sich
+//   ein 2-cl-Ausschank nicht exakt abbilden.
 // - Jede Tabelle trägt betriebId und einen Index darauf. Wo ein zusammengesetzter
 //   Index oder eine Unique-Constraint mit betriebId beginnt, deckt dessen
 //   Leftmost-Prefix die Abfrage nach betriebId bereits ab — ein zusätzlicher
 //   Einzelindex wäre nur Schreiblast.
+// - Fremdschlüssel auf Artikel löschen nie kaskadierend. Artikel werden nicht
+//   gelöscht, sondern über aktiv = false stillgelegt.
 
 generator client {
   provider = "prisma-client"
@@ -31,12 +35,37 @@ datasource db {
 // Für jede solche Tabelle RLS aktivieren und passende Policies anlegen — Prisma
 // selbst umgeht RLS, da es mit der Rolle `prisma` verbindet.
 
-enum Einheit {
-  FLASCHE
+/// Form, in der der Artikel geliefert wird.
+enum Gebindeart {
+  KASTEN
+  KARTON
+  EINZELFLASCHE
   FASS
-  LITER
 
-  @@map("einheit")
+  @@map("gebindeart")
+}
+
+/// Form, in der der Artikel im Lager gezählt wird. Bewusst getrennt von der
+/// Gebindeart: Wein kommt im KARTON, wird aber nur EINZELN gezählt.
+enum Zaehlmodus {
+  /// Volle Gebinde und lose Einheiten getrennt zählen (Kasten Bier plus Reste).
+  GEBINDE_PLUS_EINZELN
+  /// Nur Einzeleinheiten zählen (Flaschen im Regal).
+  EINZELN
+  /// Fässer zählen; angebrochene Fässer als Bruchteil.
+  FASS
+
+  @@map("zaehlmodus")
+}
+
+/// Worauf sich Artikel.ekPreisCent bezieht.
+enum EkPreisBezug {
+  /// Preis für ein ganzes Gebinde, z. B. 14,90 EUR je Kasten.
+  PRO_GEBINDE
+  /// Preis für eine Einzeleinheit, z. B. 11,50 EUR je Flasche Gin.
+  PRO_EINHEIT
+
+  @@map("ek_preis_bezug")
 }
 
 enum ZaehlungStatus {
@@ -86,28 +115,46 @@ model Benutzer {
 
 /// Artikel werden nie gelöscht, sondern über `aktiv = false` stillgelegt.
 /// Deshalb zeigt keine Relation mit onDelete: Cascade auf diese Tabelle.
+///
+/// Drei Angaben werden bewusst auseinandergehalten:
+///  1. `gebindeart` + `lieferGebindeText` beschreiben die Lieferung,
+///     `zaehlmodus` beschreibt die Zählung im Lager.
+///  2. `ekPreisBezug` sagt, ob `ekPreisCent` je Gebinde oder je Einheit gilt.
+///  3. `schwundfaehig` trennt Schwundrechnung von Zählpflicht: portioniert
+///     verkaufte Artikel werden gezählt, aber nicht auf Schwund geprüft.
 model Artikel {
-  id                 String  @id @default(uuid(7)) @db.Uuid
-  betriebId          String  @map("betrieb_id") @db.Uuid
-  name               String
-  /// Anzeigetext des Gebindes, z. B. "24 x 0,33".
-  gebindeText        String  @map("gebinde_text")
-  /// Anzahl Einheiten je Gebinde, z. B. 24.
-  packungsgroesse    Int
-  einheit            Einheit
-  /// Einkaufspreis je Gebinde in Cent.
-  ekPreisGebindeCent Int     @map("ek_preis_gebinde_cent")
-  aktiv              Boolean @default(true)
-  kategorie          String
-  sortierung         Int
+  id                   String       @id @default(uuid(7)) @db.Uuid
+  betriebId            String       @map("betrieb_id") @db.Uuid
+  name                 String
+  kategorie            String
+  sortierung           Int
+  /// Anzeigetext des Liefergebindes, z. B. "24 x 0,33". Reiner Anzeigewert;
+  /// gerechnet wird mit einheitenProGebinde und einheitsgroesseLiter.
+  lieferGebindeText    String       @map("liefer_gebinde_text")
+  /// Einheiten je Liefergebinde, z. B. 24. Bei Einzelflasche 1.
+  einheitenProGebinde  Int          @map("einheiten_pro_gebinde")
+  /// Inhalt einer Einheit in Litern, z. B. 0,33 oder 30 beim Fass.
+  einheitsgroesseLiter Decimal      @map("einheitsgroesse_liter") @db.Decimal(10, 3)
+  gebindeart           Gebindeart
+  zaehlmodus           Zaehlmodus
+  /// Einkaufspreis in Cent. Der Bezug steht in ekPreisBezug.
+  ekPreisCent          Int          @map("ek_preis_cent")
+  ekPreisBezug         EkPreisBezug @map("ek_preis_bezug")
+  /// false für portioniert verkaufte Artikel (Spirituosen, Likör): sie werden
+  /// gezählt, aber ihr Sollbestand taugt nicht zur Schwundrechnung.
+  schwundfaehig        Boolean      @default(true)
+  aktiv                Boolean      @default(true)
 
   betrieb          Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
   kassenartikel    Kassenartikel[]
   zaehlpositionen  Zaehlposition[]
   lieferpositionen Lieferposition[]
 
-  // Deckt sowohl die Mandantenabfrage (Leftmost-Prefix) als auch die sortierte
-  // Liste der aktiven Artikel ab.
+  // Derselbe Artikel darf in mehreren Gebindegrössen geführt werden — Cola als
+  // Kasten 24 x 0,33 und als Einzelflasche 1,0 l sind zwei Zeilen.
+  // Indiziert betriebId zugleich als führende Spalte.
+  @@unique([betriebId, name, lieferGebindeText])
+  // Deckt die sortierte Liste der aktiven Artikel ab.
   @@index([betriebId, aktiv, sortierung])
   @@map("artikel")
 }
@@ -119,8 +166,8 @@ model Kassenartikel {
   betriebId           String  @map("betrieb_id") @db.Uuid
   posBezeichnung      String  @map("pos_bezeichnung")
   artikelId           String? @map("artikel_id") @db.Uuid
-  /// Wie viele Artikel-Einheiten ein Verkauf abbucht, z. B. 0,5 für ein Glas.
-  /// Drei Nachkommastellen, damit auch Ausschankmengen wie 0,033 l aufgehen.
+  /// Wie viele Artikel-Einheiten ein Verkauf abbucht, z. B. 0,5 für ein Glas
+  /// aus der Literflasche oder 0,06 für einen Schnaps aus der 0,7er.
   einheitenProVerkauf Decimal @map("einheiten_pro_verkauf") @db.Decimal(10, 3)
   bestaetigt          Boolean @default(false)
 
@@ -151,13 +198,15 @@ model Zaehlung {
 }
 
 model Zaehlposition {
-  id             String   @id @default(uuid(7)) @db.Uuid
-  betriebId      String   @map("betrieb_id") @db.Uuid
-  zaehlungId     String   @map("zaehlung_id") @db.Uuid
-  artikelId      String   @map("artikel_id") @db.Uuid
-  anzahlGebinde  Decimal  @map("anzahl_gebinde") @db.Decimal(10, 2)
-  anzahlFlaschen Decimal  @map("anzahl_flaschen") @db.Decimal(10, 2)
-  gezaehltAm     DateTime @default(now()) @map("gezaehlt_am") @db.Timestamptz(6)
+  id            String   @id @default(uuid(7)) @db.Uuid
+  betriebId     String   @map("betrieb_id") @db.Uuid
+  zaehlungId    String   @map("zaehlung_id") @db.Uuid
+  artikelId     String   @map("artikel_id") @db.Uuid
+  /// Volle Liefergebinde. Bleibt 0, wenn der Artikel nur EINZELN gezählt wird.
+  anzahlGebinde Decimal  @map("anzahl_gebinde") @db.Decimal(10, 2)
+  /// Lose Einheiten ausserhalb voller Gebinde.
+  anzahlEinzeln Decimal  @map("anzahl_einzeln") @db.Decimal(10, 2)
+  gezaehltAm    DateTime @default(now()) @map("gezaehlt_am") @db.Timestamptz(6)
 
   betrieb  Betrieb  @relation(fields: [betriebId], references: [id], onDelete: Restrict)
   zaehlung Zaehlung @relation(fields: [zaehlungId], references: [id], onDelete: Cascade)
