@@ -25,6 +25,7 @@ import {
   sammelStatus,
   zusammenfuehren,
   zuSenden,
+  type Ablehnungsgrund,
   type Eintrag,
   type Sammelstatus,
 } from '@/offline/warteschlange'
@@ -58,6 +59,50 @@ export type Zaehlstand = {
   senden: () => Promise<void>
 }
 
+/**
+ * Der Warteschlangen-Stand einer Zählung, ohne die Maske zu öffnen — für die
+ * Statuszeile der Startseite. Liest denselben lokalen Speicher wie die Maske
+ * und rechnet mit demselben `sammelStatus`; hier wird nichts gesendet, nur
+ * gesagt, ob noch etwas liegt.
+ *
+ * `null`, solange der Speicher nicht gelesen ist: eine Statuszeile, die kurz
+ * "Gespeichert" behauptet und dann umspringt, wäre eine falsche Auskunft.
+ */
+export function useSyncstatus(zaehlungId: string): Sammelstatus | null {
+  const [eintraege, setEintraege] = useState<readonly Eintrag[] | null>(null)
+  const offline = useOffline()
+
+  useEffect(() => {
+    let abgebrochen = false
+
+    const lesen = () => {
+      eintraegeLesen(zaehlungId)
+        .then((gelesen) => {
+          if (!abgebrochen) setEintraege(gelesen)
+        })
+        .catch(() => {
+          // Kein IndexedDB: dann gibt es auch keine liegengebliebenen Werte,
+          // über die diese Zeile Auskunft geben könnte.
+          if (!abgebrochen) setEintraege([])
+        })
+    }
+
+    lesen()
+    // Dieselbe Uhr wie der Versand der Maske: liegt etwas, versucht ein
+    // zweites offenes Fenster es gerade loszuwerden — hier wird nur nachgesehen.
+    const uhr = setInterval(lesen, VERSUCH_ALLE_MS)
+    window.addEventListener('online', lesen)
+    return () => {
+      abgebrochen = true
+      clearInterval(uhr)
+      window.removeEventListener('online', lesen)
+    }
+  }, [zaehlungId])
+
+  if (eintraege === null) return null
+  return sammelStatus(eintraege, offline)
+}
+
 export function useZaehlstand(
   zaehlungId: string,
   artikel: readonly ZaehlArtikel[],
@@ -77,6 +122,17 @@ export function useZaehlstand(
    * online. Der Versand weiss es besser, weil er es gerade versucht hat.
    */
   const [versandFehlt, setVersandFehlt] = useState(false)
+  /**
+   * Warum der Server den letzten Stapel abgelehnt hat — oder `null`. Anders als
+   * ein totes Netz heilt das kein Wiederholen im Hintergrund: der Zähler soll
+   * es sehen und kann es mit "Erneut" von Hand anstossen, etwa nachdem das
+   * Hindernis (z. B. eine zwischenzeitlich abgeschlossene Zählung) geklärt ist.
+   *
+   * Eine abgelaufene Anmeldung (401) wird eigens geführt: dagegen hilft kein
+   * "Erneut", sondern nur eine neue Anmeldung — und das muss dort stehen, wo
+   * der Zähler es liest.
+   */
+  const [abgelehnt, setAbgelehnt] = useState<Ablehnungsgrund>(null)
   const offline = useOffline()
 
   // Der Versand läuft asynchron und muss beim Zurückschreiben den Stand sehen,
@@ -168,11 +224,12 @@ export function useZaehlstand(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ positionen: stapel.nutzlast }),
       })
-      // Ein abgelehnter Stapel bleibt in der Warteschlange. Erneutes Senden
-      // ändert daran nichts, aber es verwirft auch nichts — und der Zähler
-      // sieht am stehenden Zähler, dass etwas nicht durchgeht.
+      // Ein abgelehnter Stapel bleibt in der Warteschlange, und die Ablehnung
+      // wird gemeldet: sie ist eine Antwort des Servers, kein Funkloch — von
+      // allein kommt hier nichts mehr an.
       if (!antwort.ok) {
         console.warn('Server hat den Stapel abgelehnt', antwort.status, await antwort.text())
+        setAbgelehnt(antwort.status === 401 ? 'abgemeldet' : 'abgelehnt')
         return
       }
 
@@ -180,6 +237,7 @@ export function useZaehlstand(
       anwenden(new Map(aktualisiert.map((eintrag) => [eintrag.artikelId, eintrag])))
       await eintraegeSchreiben(aktualisiert)
       setVersandFehlt(false)
+      setAbgelehnt(null)
     } catch {
       // Kein Netz. Der nächste Lauf nimmt denselben Stapel erneut mit — und
       // bis dahin soll oben stehen, dass Werte liegenbleiben.
@@ -194,6 +252,10 @@ export function useZaehlstand(
   useEffect(() => {
     if (laedt) return
 
+    // Der Erstversuch ruft senden() direkt. Dessen setState-Aufrufe liegen
+    // alle hinter einem await auf die Serverantwort — hier rendert nichts
+    // kaskadierend, die Regel sieht nur den synchronen Aufruf.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void senden()
     const uhr = setInterval(() => void senden(), VERSUCH_ALLE_MS)
     const beiNetz = () => void senden()
@@ -217,7 +279,7 @@ export function useZaehlstand(
   return {
     eintraege,
     erfasst: new Set(eintraege.keys()),
-    status: sammelStatus([...eintraege.values()], offline || versandFehlt),
+    status: sammelStatus([...eintraege.values()], offline || versandFehlt, abgelehnt),
     laedt,
     setzen,
     senden,

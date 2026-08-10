@@ -183,11 +183,50 @@ describe('sammelStatus', () => {
     // das der Zähler ohnehin nicht beheben könnte.
     expect(sammelStatus([offen], false)).toEqual({ art: 'sendet', offen: 1 })
   })
+
+  it('meldet eine Ablehnung des Servers vor allem anderen', () => {
+    // Auch offline: die Ablehnung war eine Antwort, kein Funkloch — diese
+    // Werte kommen von allein nicht mehr an.
+    expect(sammelStatus([offen], false, 'abgelehnt')).toEqual({ art: 'abgelehnt', offen: 1 })
+    expect(sammelStatus([offen], true, 'abgelehnt')).toEqual({ art: 'abgelehnt', offen: 1 })
+  })
+
+  it('hält die abgelaufene Anmeldung von der Ablehnung getrennt', () => {
+    // Zwei verschiedene Handlungen: gegen eine Ablehnung hilft "Erneut", gegen
+    // eine abgelaufene Sitzung nur eine neue Anmeldung.
+    expect(sammelStatus([offen], false, 'abgemeldet')).toEqual({ art: 'abgemeldet', offen: 1 })
+    expect(sammelStatus([offen], true, 'abgemeldet')).toEqual({ art: 'abgemeldet', offen: 1 })
+  })
+
+  it('lässt eine alte Ablehnung fallen, sobald nichts mehr aussteht', () => {
+    expect(sammelStatus([fertig], false, 'abgelehnt')).toEqual({ art: 'gespeichert' })
+    expect(sammelStatus([fertig], false, 'abgemeldet')).toEqual({ art: 'gespeichert' })
+  })
 })
 
 describe('statusText', () => {
   it('formuliert den Einzelfall im Singular', () => {
     expect(statusText({ art: 'wartet', offen: 1 })).toBe('1 Wert wartet auf Netz')
     expect(statusText({ art: 'wartet', offen: 3 })).toBe('3 Werte warten auf Netz')
+  })
+
+  it('benennt die Ablehnung samt Umfang', () => {
+    expect(statusText({ art: 'abgelehnt', offen: 1 })).toBe(
+      'Übertragung fehlgeschlagen · 1 Wert offen',
+    )
+    expect(statusText({ art: 'abgelehnt', offen: 4 })).toBe(
+      'Übertragung fehlgeschlagen · 4 Werte offen',
+    )
+  })
+
+  it('sagt bei abgelaufener Anmeldung, dass die Werte im Gerät liegen', () => {
+    // Kein „fehlgeschlagen": nichts ist kaputt und nichts ist weg. Wer im Lager
+    // liest, dass die Übertragung fehlschlug, hält seinen Abend für verloren.
+    expect(statusText({ art: 'abgemeldet', offen: 1 })).toBe(
+      'Anmeldung abgelaufen · 1 Wert liegt im Gerät',
+    )
+    expect(statusText({ art: 'abgemeldet', offen: 7 })).toBe(
+      'Anmeldung abgelaufen · 7 Werte liegen im Gerät',
+    )
   })
 })

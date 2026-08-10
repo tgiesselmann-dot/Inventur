@@ -1,26 +1,284 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Die Design-Grundlage der Inventur-App.
+ *
+ * Farbe steht hier nie für sich: jede Rolle ist in Hell und Dunkel getrennt
+ * definiert und trägt ihre Aufschrift-Farbe mit. Die Werte sind auf Kontrast
+ * geprüft — im Lager bei Neonlicht, auf der Terrasse bei Sonne.
+ *
+ * Warum nicht einfach sky-600: eine Fläche in sky-600 trägt weissen Text mit
+ * 4,1:1 und fällt damit unter AA. Flächen mit Aufschrift werden in Hell auf 700
+ * abgedunkelt, in Dunkel aufgehellt und tragen dann dunkle Schrift.
+ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+
+  --color-primary: var(--primary);
+  --color-primary-on: var(--primary-on);
+  --color-primary-text: var(--primary-text);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-on: var(--primary-soft-on);
+
+  --color-confirm: var(--confirm);
+  --color-confirm-on: var(--confirm-on);
+  --color-confirm-text: var(--confirm-text);
+  --color-confirm-soft: var(--confirm-soft);
+  --color-confirm-soft-on: var(--confirm-soft-on);
+
+  --color-attention: var(--attention);
+  --color-attention-on: var(--attention-on);
+  --color-attention-text: var(--attention-text);
+  --color-attention-soft: var(--attention-soft);
+  --color-attention-soft-on: var(--attention-soft-on);
+
+  --color-danger: var(--danger);
+  --color-danger-on: var(--danger-on);
+  --color-danger-text: var(--danger-text);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-soft-on: var(--danger-soft-on);
+
+  /* Violett für die Preisabweichung — die eine Art ausserhalb der vier
+     Grundrollen: Geld ohne Warenbewegung ist weder Fehlbestand (danger) noch
+     Hinweis (attention). Bewusst nur Punkt- und Textfassung: die Rolle färbt
+     eine Markierung und ein Wort, nie eine Fläche mit Aufschrift. */
+  --color-preis: var(--preis);
+  --color-preis-text: var(--preis-text);
+
+  --color-focus: var(--focus);
+
+  /* Kleinste Berührfläche. Als Utility: min-h-tap, h-tap. */
+  --spacing-tap: 56px;
+  /* Kleinster Abstand zwischen zwei auslösenden Flächen: gap-tapgap. */
+  --spacing-tapgap: 8px;
+  --radius-ctl: 10px;
+
+  /* Eigene Stufe für den gerade erfassten Wert — aus 60 cm lesbar. */
+  --text-count: 48px;
+  --text-count--line-height: 1;
+  --text-count--font-weight: 600;
+
+  /* Die übrigen Stufen der Grundlage, die zwischen Tailwinds Standardgrössen
+     liegen: Titel 28 (zwischen 2xl und 3xl), Zeilentitel 17 (zwischen base und
+     lg), Abschnitt 13 (zwischen xs und sm). Versalien erzwingt keine Stufe —
+     das setzt die Stelle selbst (uppercase). */
+  --text-titel: 28px;
+  --text-titel--line-height: 1.2;
+  --text-titel--font-weight: 600;
+  --text-titel--letter-spacing: -0.02em;
+
+  --text-zeile: 17px;
+  --text-zeile--line-height: 1.35;
+  --text-zeile--font-weight: 500;
+
+  /* Trägt auch IDs in Mono (13/1.4/400): dieselbe Grösse, die Stelle setzt
+     dann font-mono font-normal tracking-normal dazu — 13 px zweimal zu
+     definieren hiesse, sie zweimal ändern zu müssen. */
+  --text-abschnitt: 13px;
+  --text-abschnitt--line-height: 1.2;
+  --text-abschnitt--font-weight: 600;
+  --text-abschnitt--letter-spacing: 0.06em;
+
+  /* Die Versalien-Kleinschrift unter einer Zahl — "KÄSTEN", "FÄSSER". Eigene
+     Stufe neben Abschnitt (13/600/0.06em), weil sie eine andere Aufgabe hat:
+     eine Abschnittsüberschrift gliedert eine Liste, eine Beschriftung sagt, in
+     welcher Einheit die Zahl über ihr steht. Sie muss leiser sein als die Zahl,
+     sonst streiten beide um denselben Blick. */
+  --text-beschriftung: 12px;
+  --text-beschriftung--line-height: 1.2;
+  --text-beschriftung--font-weight: 500;
+  --text-beschriftung--letter-spacing: 0.08em;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* Sagt dem Browser, in welchem Modus er seine eigenen Flächen zeichnet:
+     Kalendersymbol und Auswahlliste eines Datumsfeldes, die Aufklappliste eines
+     <select>, Bildlaufleisten. Ohne diese Zeile bleibt das Kalendersymbol im
+     Dunkelmodus schwarz auf schwarz — an ihm hilft keine Rolle aus dieser
+     Datei, es gehört dem Browser. */
+  color-scheme: light;
+
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --text: #18181b;
+  --text-muted: #52525b;
+
+  --primary: #0369a1;
+  --primary-on: #ffffff;
+  --primary-text: #0369a1;
+  --primary-soft: #f0f9ff;
+  --primary-soft-on: #075985;
+
+  --confirm: #047857;
+  --confirm-on: #ffffff;
+  --confirm-text: #047857;
+  --confirm-soft: #ecfdf5;
+  --confirm-soft-on: #065f46;
+
+  /* Amber folgt in Hell derselben Regel wie die anderen Rollen: Fläche auf
+     700 abgedunkelt (#f59e0b hielte als Statuspunkt nur 2,15:1 auf Weiss),
+     Aufschrift weiss. Nur in Dunkel bleibt Amber hell mit dunkler Aufschrift. */
+  --attention: #b45309;
+  --attention-on: #ffffff;
+  --attention-text: #b45309;
+  --attention-soft: #fffbeb;
+  --attention-soft-on: #b45309;
+
+  --danger: #b91c1c;
+  --danger-on: #ffffff;
+  --danger-text: #b91c1c;
+  --danger-soft: #fef2f2;
+  --danger-soft-on: #b91c1c;
+
+  /* Violett 600 als Punkt, 700 als Text — 700 hält auf Weiss 6,9:1. */
+  --preis: #7c3aed;
+  --preis-text: #6d28d9;
+
+  --focus: #0284c7;
+}
+
+/*
+ * Dunkel hängt an der Klasse, nicht an einer Medienabfrage: im Lager wird
+ * Dunkel bewusst gewählt und nicht vom Sonnenstand entschieden. Gedeckte
+ * Flächen sind hier hell und tragen dunkle Aufschrift — das hält den Kontrast
+ * in beiden Umgebungen gleich hoch.
+ *
+ * Der ganze Block steht in `@media not print`: auf Papier gelten immer die
+ * Hellwerte aus :root, sonst druckt ein dunkles Gerät 2,6:1-Hellgrau auf
+ * weisses Papier. Die Werte stehen so nur einmal — ein zweiter Hell-Block im
+ * Druckabschnitt wäre eine Kopie, die auseinanderdriftet.
+ */
+@media not print {
+  .dark {
+    color-scheme: dark;
+
+    --bg: #09090b;
+    --surface: #18181b;
+    --surface-2: #27272a;
+    --border: #3f3f46;
+    --border-strong: #52525b;
+    --text: #fafafa;
+    --text-muted: #a1a1aa;
+
+    --primary: #0ea5e9;
+    --primary-on: #09090b;
+    --primary-text: #38bdf8;
+    --primary-soft: #082f49;
+    --primary-soft-on: #bae6fd;
+
+    --confirm: #34d399;
+    --confirm-on: #09090b;
+    --confirm-text: #34d399;
+    --confirm-soft: #022c22;
+    --confirm-soft-on: #a7f3d0;
+
+    --attention: #f59e0b;
+    --attention-on: #09090b;
+    --attention-text: #fbbf24;
+    --attention-soft: #422006;
+    --attention-soft-on: #fde68a;
+
+    --danger: #f87171;
+    --danger-on: #09090b;
+    --danger-text: #f87171;
+    --danger-soft: #450a0a;
+    --danger-soft-on: #fecaca;
+
+    /* In Dunkel trägt Violett 400 beide Aufgaben — 300 wäre schon pastell. */
+    --preis: #a78bfa;
+    --preis-text: #a78bfa;
+
+    --focus: #38bdf8;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), -apple-system, system-ui, sans-serif;
+  /* Ohne Ausnahme: Mengen, Beträge, Datumsangaben, Zähler. Springende Spalten
+     kosten im Lager mehr Zeit als jede Ladeanimation. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Rückmeldung beim Tippen: 90 ms, die Fläche zieht sich zusammen. Die einzige
+ * Animation im Produkt neben dem Wechsel zwischen Artikeln.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .tap {
+    transition: transform 90ms ease-out;
+  }
+  .tap:active {
+    transform: scale(0.97);
+  }
+}
+
+/* Der Fokusring ist in beiden Modi sichtbar: 2 px stark, 2 px Abstand. */
+.fokus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/*
+ * Druck. Gedruckt wird die Bestellung: ein Blatt, das an der Rampe abgehakt
+ * wird. Es gibt dafür keine zweite Vorlage — dieselbe Seite verliert im Ausdruck
+ * ihre Bedienelemente (.nur-schirm) und bekommt ihren Briefkopf (.nur-druck).
+ * Zwei Vorlagen wären zwei Stellen, an denen sich eine Spalte ändern müsste.
+ */
+.nur-druck {
+  display: none;
+}
+
+@media print {
+  .nur-schirm {
+    display: none !important;
+  }
+  /* `revert` statt `block`: eine Tabellenzelle muss table-cell werden, ein
+     Briefkopf block. Ein festes display würde die Abhak-Spalte aus der Tabelle
+     brechen. */
+  .nur-druck {
+    display: revert;
+  }
+  /* Auf Papier ist Dunkelmodus keine Wahl, sondern Tonerverbrauch. */
+  body {
+    background: #fff;
+    color: #000;
+  }
+  /*
+   * Eingabefelder werden auf Papier zu ihrem Wert. Die Positionsliste einer
+   * Bestellung ist auf dem Schirm änderbar und auf dem Blatt eine Tabelle — ohne
+   * diese Regel stünden dort neunzehn Kästchen mit Rahmen. Die Tasten daneben
+   * tragen `nur-schirm`.
+   */
+  input {
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  /* Tabellenzeilen dürfen nicht zwischen zwei Seiten reissen. */
+  tr {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
 }

@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "lager": "node scripts/lager-https.mjs",
+    "benutzer": "tsx scripts/benutzer.mts",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { EkPreisBezug, Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
-import { leseArtikelstamm, type Artikelstammsatz } from '@/lib/artikelimport'
+import {
+  leseArtikelstamm,
+  vergleicheArtikelstamm,
+  type Artikelstammsatz,
+} from '@/lib/artikelimport'
 
 const FIXTURE = fileURLToPath(
   new URL('../fixtures/artikelstamm-stadthafen.csv', import.meta.url),
@@ -196,6 +200,119 @@ describe('Unvollständige und fehlerhafte Zeilen', () => {
 
   it('kommt mit einer leeren Datei klar', () => {
     expect(leseArtikelstamm('')).toMatchObject({ saetze: [], fehler: [] })
+  })
+})
+
+describe('Vergleich mit dem Bestand', () => {
+  // Der Bestand entsteht über dieselbe Abbildung wie die Datei — genau so
+  // liegen die Sätze auch in der Datenbank, nur um betriebId und id ergänzt.
+  const bestand = leseArtikelstamm(
+    csv(
+      'Softdrinks;Coca Cola;24 x 0,33;24;FLASCHE;0,33;18,59;110;12;Cola;',
+      'Wein;Riesling;1 x 0,75;1;FLASCHE;0,75;;740;75;Riesling;',
+    ),
+  ).saetze
+
+  it('trennt neu, unverändert und geändert — geschrieben wird nur, was sich ändert', () => {
+    const lesung = leseArtikelstamm(
+      csv(
+        'Softdrinks;Coca Cola;24 x 0,33;24;FLASCHE;0,33;18,59;110;12;Cola;',
+        'Softdrinks;Fritz-Kola;24 x 0,33;24;FLASCHE;0,33;21,60;135;13;Fritz;',
+        'Wein;Riesling;1 x 0,75;1;FLASCHE;0,75;41,40;740;75;Riesling;',
+      ),
+    )
+    const { zeilen, schreibbar } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen.map((z) => [z.zeile, z.status])).toEqual([
+      [2, 'unveraendert'],
+      [3, 'neu'],
+      [4, 'geaendert'],
+    ])
+    // Der unveränderte Cola-Satz wird nicht geschrieben — kein Schreibvorgang,
+    // kein Protokolleintrag.
+    expect(schreibbar.map((s) => s.name)).toEqual(['Fritz-Kola', 'Riesling'])
+  })
+
+  it('zeigt an der Preisänderung alten und neuen Wert unter der CSV-Spalte', () => {
+    const lesung = leseArtikelstamm(
+      csv('Softdrinks;Coca Cola;24 x 0,33;24;FLASCHE;0,33;19,20;110;12;Cola;'),
+    )
+    const { zeilen } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen[0].status).toBe('geaendert')
+    expect(zeilen[0].aenderungen).toEqual([
+      { feld: 'ek_preis_gebinde_eur', alt: '18,59', neu: '19,20' },
+    ])
+    expect(zeilen[0].beschreibung).toBe('1 Feld wird überschrieben')
+  })
+
+  it('nennt einen bisher fehlenden Preis "leer", nie 0,00', () => {
+    const lesung = leseArtikelstamm(
+      csv('Wein;Riesling;1 x 0,75;1;FLASCHE;0,75;41,40;740;75;Riesling;'),
+    )
+    const { zeilen } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen[0].aenderungen).toContainEqual({
+      feld: 'ek_preis_gebinde_eur',
+      alt: 'leer',
+      neu: '41,40',
+    })
+  })
+
+  it('meldet abgeleitete Felder mit, wenn die Quellspalten sie ändern', () => {
+    // Gleicher Schlüssel (Name + Gebindetext), aber als Fass deklariert: die
+    // Vorschau muss zeigen, dass damit auch Gebindeart und Zählmodus kippen.
+    const lesung = leseArtikelstamm(
+      csv('Softdrinks;Coca Cola;24 x 0,33;1;FASS;30;18,59;110;12;Cola;'),
+    )
+    const { zeilen } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen[0].status).toBe('geaendert')
+    expect(zeilen[0].aenderungen).toContainEqual({ feld: 'gebindeart', alt: 'Kasten', neu: 'Fass' })
+    expect(zeilen[0].aenderungen).toContainEqual({
+      feld: 'zaehlmodus',
+      alt: 'Gebinde plus einzeln',
+      neu: 'Fass',
+    })
+  })
+
+  it('wertet gleiche Zahlen in anderer Schreibweise nicht als Änderung', () => {
+    // "0,330" und "0,33" sind dieselbe Gebindegrösse; Decimal normalisiert.
+    const lesung = leseArtikelstamm(
+      csv('Softdrinks;Coca Cola;24 x 0,33;24;FLASCHE;0,330;18.59;110;12;Cola;'),
+    )
+    const { zeilen } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen[0].status).toBe('unveraendert')
+  })
+
+  it('reiht Fehlerzeilen mit Rohwerten und konkretem Grund in die Vorschau ein', () => {
+    const lesung = leseArtikelstamm(
+      csv(
+        'Softdrinks;Coca Cola;24 x 0,33;24;FLASCHE;0,33;18,59;110;12;Cola;',
+        'Softdrinks;Ginger Ale;24 x 0,2;24;FLASCHE;0,2;8,58 EUR;120;13;Ginger;',
+      ),
+    )
+    const { zeilen, schreibbar } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen.map((z) => z.status)).toEqual(['unveraendert', 'fehlerhaft'])
+    expect(zeilen[1]).toMatchObject({
+      zeile: 3,
+      name: 'Ginger Ale',
+      gebinde: '24 x 0,2',
+      kategorie: 'Softdrinks',
+      beschreibung: "Spalte ek_preis_gebinde_eur enthält '8,58 EUR' — erwartet wird eine Zahl",
+    })
+    expect(schreibbar).toEqual([])
+  })
+
+  it('beschreibt eine neue Zeile mit Preis, Bezug und Sortiernummer', () => {
+    const lesung = leseArtikelstamm(
+      csv('Softdrinks;Fritz-Kola;24 x 0,33;24;FLASCHE;0,33;21,60;135;13;Fritz;'),
+    )
+    const { zeilen } = vergleicheArtikelstamm(lesung, bestand)
+
+    expect(zeilen[0].beschreibung).toBe('Wird angelegt · 21,60 EUR je Kasten · Sortier-Nr. 135')
   })
 })
 

@@ -75,6 +75,57 @@ enum ZaehlungStatus {
   @@map("zaehlung_status")
 }
 
+/// Stand einer Bestellung beim Lieferanten.
+///
+/// Bewusst ohne den Wert TEILWEISE_GELIEFERT: ob eine Bestellung ganz, teilweise
+/// oder nicht geliefert ist, ergibt sich aus den Lieferpositionen, die auf ihre
+/// Bestellpositionen zeigen. Ein gespeicherter Wert wäre eine zweite Wahrheit
+/// und würde beim ersten vergessenen Update falsch.
+enum BestellStatus {
+  /// Vorschlag, noch nicht beim Lieferanten.
+  ENTWURF
+  /// Abgeschickt, Lieferung steht aus.
+  VERSENDET
+  /// Vom Betrieb geschlossen. Eine Restmenge wird nicht mehr erwartet.
+  ABGESCHLOSSEN
+  STORNIERT
+
+  @@map("bestell_status")
+}
+
+/// Art einer reklamationswürdigen Abweichung an der Rampe.
+///
+/// Hier steht nur, was gegenüber dem Lieferanten geltend gemacht wird — der
+/// Vergleich Ware gegen Lieferschein und der Preis. Die Differenz zwischen
+/// Bestellung und Lieferschein wird nicht als Abweichung gespeichert: sie ist
+/// aus Bestell- und Lieferpositionen jederzeit ausrechenbar.
+enum Abweichungsart {
+  /// Weniger Ware auf der Palette als auf dem Lieferschein.
+  FEHLMENGE
+  /// Mehr Ware als auf dem Lieferschein.
+  UEBERLIEFERUNG
+  /// Ware angekommen, aber unbrauchbar. Zählt nicht in den Bestand.
+  BRUCH
+  /// Anderer Artikel als bestellt. Die Lieferposition trägt den gelieferten,
+  /// ihre bestellpositionId weiterhin den bestellten.
+  FALSCHER_ARTIKEL
+  /// Lieferscheinpreis weicht vom hinterlegten Einkaufspreis ab.
+  PREISABWEICHUNG
+
+  @@map("abweichungsart")
+}
+
+enum Abweichungsstatus {
+  OFFEN
+  REKLAMIERT
+  GUTSCHRIFT_ERWARTET
+  ERLEDIGT
+  /// Geprüft und fallengelassen — etwa weil der eigene Zählfehler auffiel.
+  VERWORFEN
+
+  @@map("abweichungsstatus")
+}
+
 // ---------------------------------------------------------------------------
 // Mandant und Benutzer
 // ---------------------------------------------------------------------------
@@ -84,26 +135,49 @@ model Betrieb {
   name       String
   angelegtAm DateTime @default(now()) @map("angelegt_am") @db.Timestamptz(6)
 
-  benutzer         Benutzer[]
-  artikel          Artikel[]
-  kassenartikel    Kassenartikel[]
-  zaehlungen       Zaehlung[]
-  zaehlpositionen  Zaehlposition[]
-  lieferungen      Lieferung[]
-  lieferpositionen Lieferposition[]
-  umsatzimporte    Umsatzimport[]
-  umsatzpositionen Umsatzposition[]
+  benutzer                  Benutzer[]
+  artikel                   Artikel[]
+  kassenartikel             Kassenartikel[]
+  kassenartikelbestandteile Kassenartikelbestandteil[]
+  zaehlungen            Zaehlung[]
+  zaehlpositionen       Zaehlposition[]
+  bestellungen          Bestellung[]
+  bestellpositionen     Bestellposition[]
+  lieferungen           Lieferung[]
+  lieferpositionen      Lieferposition[]
+  leergutpositionen     Leergutposition[]
+  abweichungen          Abweichung[]
+  abweichungsereignisse Abweichungsereignis[]
+  umsatzimporte         Umsatzimport[]
+  umsatzpositionen      Umsatzposition[]
 
   @@map("betrieb")
 }
 
+/// Wer die App benutzen darf. Der Datensatz hier ist die Zugangsliste; das
+/// Passwort liegt in Supabase Auth und nie in dieser Tabelle.
+///
+/// Zwei Schlüssel auf dasselbe Konto, mit Absicht:
+///  - `email` ist der Schlüssel bei der allerersten Anmeldung. So kann ein
+///    Zugang eingetragen werden, bevor sich jemand je angemeldet hat.
+///  - `authId` ist der Schlüssel danach. Ab der ersten Anmeldung hängt der
+///    Zugang an der Konto-Id und nicht mehr an der Adresse — wer seine
+///    E-Mail ändert, verliert damit weder den Zugang noch seine Historie,
+///    und eine später frei gewordene Adresse öffnet keine fremde Tür.
 model Benutzer {
-  id        String @id @default(uuid(7)) @db.Uuid
-  betriebId String @map("betrieb_id") @db.Uuid
-  email     String @unique
-  rolle     String
+  id         String   @id @default(uuid(7)) @db.Uuid
+  betriebId  String   @map("betrieb_id") @db.Uuid
+  email      String   @unique
+  rolle      String
+  /// Konto in Supabase Auth (auth.users.id). Null, solange der Zugang zwar
+  /// eingetragen, aber noch nie benutzt wurde. Bewusst ohne Fremdschlüssel:
+  /// auth.users liegt in einem anderen Schema, das Prisma nicht verwaltet.
+  authId     String?  @unique @map("auth_id") @db.Uuid
+  angelegtAm DateTime @default(now()) @map("angelegt_am") @db.Timestamptz(6)
 
-  betrieb Betrieb @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  betrieb               Betrieb               @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  gepruefteLieferungen  Lieferung[]
+  abweichungsereignisse Abweichungsereignis[]
 
   @@index([betriebId])
   @@map("benutzer")
@@ -147,10 +221,11 @@ model Artikel {
   schwundfaehig        Boolean      @default(true)
   aktiv                Boolean      @default(true)
 
-  betrieb          Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
-  kassenartikel    Kassenartikel[]
-  zaehlpositionen  Zaehlposition[]
-  lieferpositionen Lieferposition[]
+  betrieb                   Betrieb                    @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  kassenartikelbestandteile Kassenartikelbestandteil[]
+  zaehlpositionen           Zaehlposition[]
+  bestellpositionen         Bestellposition[]
+  lieferpositionen          Lieferposition[]
 
   // Derselbe Artikel darf in mehreren Gebindegrössen geführt werden — Cola als
   // Kasten 24 x 0,33 und als Einzelflasche 1,0 l sind zwei Zeilen.
@@ -161,25 +236,65 @@ model Artikel {
   @@map("artikel")
 }
 
-/// Bezeichnung aus dem Kassensystem und ihre Zuordnung zu einem Artikel.
-/// `artikelId` bleibt leer, solange die Zuordnung nicht getroffen ist.
+/// Eine Bezeichnung, wie sie im Kassensystem gebucht wird — die Hülle, an der
+/// die Zuordnung zum Lager hängt. Was ein Verkauf tatsächlich vom Bestand
+/// abzieht, steht in den `bestandteile`.
+///
+/// Drei Zustände, die sich am Feld `bestaetigt` und an der Zahl der Bestandteile
+/// ablesen lassen und bewusst nicht als eigener Statuswert geführt werden:
+///  - unbearbeitet:  bestaetigt = false — steht auf der Arbeitsliste.
+///  - zugeordnet:    bestaetigt = true mit mindestens einem Bestandteil.
+///  - übergangen:    bestaetigt = true ohne Bestandteil. Der Kassenexport führt
+///    tausend Speisen und Sonderwünsche, die kein Getränkelager berühren; ohne
+///    diesen Zustand stünden sie für immer als offene Aufgabe da.
 model Kassenartikel {
-  id                  String  @id @default(uuid(7)) @db.Uuid
-  betriebId           String  @map("betrieb_id") @db.Uuid
-  posBezeichnung      String  @map("pos_bezeichnung")
-  artikelId           String? @map("artikel_id") @db.Uuid
-  /// Wie viele Artikel-Einheiten ein Verkauf abbucht, z. B. 0,5 für ein Glas
-  /// aus der Literflasche oder 0,06 für einen Schnaps aus der 0,7er.
-  einheitenProVerkauf Decimal @map("einheiten_pro_verkauf") @db.Decimal(10, 3)
-  bestaetigt          Boolean @default(false)
+  id             String  @id @default(uuid(7)) @db.Uuid
+  betriebId      String  @map("betrieb_id") @db.Uuid
+  posBezeichnung String  @map("pos_bezeichnung")
+  bestaetigt     Boolean @default(false)
+  /// Freitext für den Fall, dass die Zuordnung Erklärung braucht — etwa warum
+  /// eine Bezeichnung übergangen wurde.
+  notiz          String?
 
-  betrieb Betrieb  @relation(fields: [betriebId], references: [id], onDelete: Restrict)
-  artikel Artikel? @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+  betrieb      Betrieb                    @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  bestandteile Kassenartikelbestandteil[]
 
   // Die Unique-Constraint indiziert betriebId bereits als führende Spalte.
   @@unique([betriebId, posBezeichnung])
-  @@index([artikelId])
   @@map("kassenartikel")
+}
+
+/// Was ein einzelner Kassenverkauf aus dem Lager nimmt — eine Zeile je Artikel.
+///
+/// Eigene Tabelle statt zweier Felder an `Kassenartikel`, weil ein Verkauf
+/// regelmässig mehr als einen Artikel anfasst: ein Aperol Spritz nimmt Aperol
+/// und Prosecco, ein Krefelder nimmt Fassbier und Cola. Mit nur einem Artikel
+/// je Bezeichnung fehlte der zweite in der Rechnung und tauchte am Monatsende
+/// als Schwund auf — die Sorte Fehler, wegen der diese App gebaut wird.
+///
+/// Der Verkaufspreis kommt hier nicht vor. Die Rechnung dieser App läuft über
+/// Mengen und Einkaufswerte; was der Gast gezahlt hat, gehört in die Kasse.
+model Kassenartikelbestandteil {
+  id              String @id @default(uuid(7)) @db.Uuid
+  betriebId       String @map("betrieb_id") @db.Uuid
+  kassenartikelId String @map("kassenartikel_id") @db.Uuid
+  artikelId       String @map("artikel_id") @db.Uuid
+  /// Wie viele Artikel-Einheiten ein Verkauf abbucht, z. B. 0,5 für ein Glas
+  /// aus der Literflasche oder 0,06 für einen Schnaps aus der 0,7er.
+  /// Drei Nachkommastellen, sonst liesse sich ein 2-cl-Ausschank nicht abbilden.
+  einheitenProVerkauf Decimal @map("einheiten_pro_verkauf") @db.Decimal(10, 3)
+
+  betrieb       Betrieb       @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  kassenartikel Kassenartikel @relation(fields: [kassenartikelId], references: [id], onDelete: Cascade)
+  artikel       Artikel       @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+
+  // Ein Artikel steht höchstens einmal je Bezeichnung; zwei Zeilen desselben
+  // Artikels wären zwei Mengen für dieselbe Sache. Indiziert zugleich
+  // kassenartikelId als führende Spalte.
+  @@unique([kassenartikelId, artikelId])
+  @@index([betriebId])
+  @@index([artikelId])
+  @@map("kassenartikelbestandteil")
 }
 
 // ---------------------------------------------------------------------------
@@ -222,50 +337,257 @@ model Zaehlposition {
 }
 
 // ---------------------------------------------------------------------------
-// Lieferungen
+// Bestellung
 // ---------------------------------------------------------------------------
 
-model Lieferung {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  betriebId String   @map("betrieb_id") @db.Uuid
-  datum     DateTime @db.Date
-  lieferant String
-  belegNr   String   @map("beleg_nr")
+/// Was beim Lieferanten bestellt wurde — die erste der drei Mengen, die der
+/// Wareneingang vergleicht (bestellt / laut Lieferschein / tatsächlich).
+///
+/// Eine Bestellung kann in mehreren Lieferungen ankommen. Die Verbindung läuft
+/// deshalb nicht über die Lieferung als Ganzes, sondern über
+/// Lieferposition.bestellpositionId: nur dort ist die Zuordnung auch bei
+/// Teillieferung und Ersatzartikel eindeutig.
+model Bestellung {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  betriebId  String        @map("betrieb_id") @db.Uuid
+  datum      DateTime      @db.Date
+  lieferant  String
+  status     BestellStatus @default(ENTWURF)
+  notiz      String?
+  angelegtAm DateTime      @default(now()) @map("angelegt_am") @db.Timestamptz(6)
 
-  betrieb    Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
-  positionen Lieferposition[]
+  betrieb     Betrieb           @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  positionen  Bestellposition[]
+  lieferungen Lieferung[]
 
   @@index([betriebId, datum])
+  @@index([betriebId, status])
+  @@map("bestellung")
+}
+
+model Bestellposition {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  betriebId     String  @map("betrieb_id") @db.Uuid
+  bestellungId  String  @map("bestellung_id") @db.Uuid
+  artikelId     String  @map("artikel_id") @db.Uuid
+  /// Bestellte Liefergebinde. Decimal wie überall bei Mengen, damit ein halbes
+  /// Fass darstellbar bleibt.
+  anzahlGebinde Decimal @map("anzahl_gebinde") @db.Decimal(10, 2)
+
+  betrieb          Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  bestellung       Bestellung       @relation(fields: [bestellungId], references: [id], onDelete: Cascade)
+  artikel          Artikel          @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+  lieferpositionen Lieferposition[]
+
+  // Ein Artikel steht höchstens einmal in einer Bestellung. Indiziert zugleich
+  // bestellungId als führende Spalte.
+  @@unique([bestellungId, artikelId])
+  @@index([betriebId])
+  @@index([artikelId])
+  @@map("bestellposition")
+}
+
+// ---------------------------------------------------------------------------
+// Lieferung und Wareneingang
+// ---------------------------------------------------------------------------
+
+/// Eine Anlieferung an der Rampe, mit dem Ergebnis ihrer Kontrolle.
+///
+/// Es gibt hier bewusst kein Feld `kontrollstatus`. Ungeprüft heisst
+/// `geprueftAm = null`; ob eine geprüfte Lieferung Abweichungen hatte, sagen
+/// die Abweichungen an ihren Positionen. Beides doppelt zu führen hiesse, es
+/// beim ersten vergessenen Update auseinanderlaufen zu lassen.
+model Lieferung {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  betriebId    String   @map("betrieb_id") @db.Uuid
+  /// Bleibt leer bei Ware, die ohne Bestellung kommt — Nachlieferung eines
+  /// Vertreters, Aushilfslieferung aus einem anderen Betrieb.
+  bestellungId String?  @map("bestellung_id") @db.Uuid
+  datum        DateTime @db.Date
+  lieferant    String
+  belegNr      String   @map("beleg_nr")
+
+  /// Zeitpunkt der Wareneingangskontrolle. null heisst: noch nicht geprüft.
+  /// Erst eine geprüfte Lieferung ist bestandswirksam.
+  geprueftAm           DateTime? @map("geprueft_am") @db.Timestamptz(6)
+  geprueftVonId        String?   @map("geprueft_von_id") @db.Uuid
+  /// Name des Fahrers, der die Abweichungen gegengezeichnet hat. Reiner
+  /// Belegtext — der Fahrer ist kein Benutzer dieses Systems.
+  fahrerName           String?   @map("fahrer_name")
+  /// Pfade in Supabase Storage, nicht die Bilder selbst.
+  lieferscheinBildPfad String?   @map("lieferschein_bild_pfad")
+  unterschriftBildPfad String?   @map("unterschrift_bild_pfad")
+
+  betrieb           Betrieb           @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  bestellung        Bestellung?       @relation(fields: [bestellungId], references: [id], onDelete: Restrict)
+  geprueftVon       Benutzer?         @relation(fields: [geprueftVonId], references: [id], onDelete: Restrict)
+  positionen        Lieferposition[]
+  leergutpositionen Leergutposition[]
+
+  @@index([betriebId, datum])
+  @@index([bestellungId])
+  @@index([geprueftVonId])
   @@map("lieferung")
 }
 
+/// Eine Zeile des Wareneingangs. Trägt zwei der drei Mengen; die dritte
+/// (bestellt) steht an der Bestellposition und wird von dort gelesen, nicht
+/// hierher kopiert.
+///
+/// `anzahlGebindeTatsaechlich` ist die einzige bestandswirksame Menge. Was auf
+/// dem Lieferschein steht, ist ein Beleg und kein Bestand — genau diese
+/// Verwechslung kostet den Betrieb sonst jede nicht bemerkte Fehlmenge.
+///
+/// Bruch zählt nicht mit: Ware, die beschädigt ankommt, wird nicht übernommen,
+/// steht also nicht in `anzahlGebindeTatsaechlich`, sondern als Abweichung der
+/// Art BRUCH.
 model Lieferposition {
-  id            String  @id @default(uuid(7)) @db.Uuid
-  betriebId     String  @map("betrieb_id") @db.Uuid
-  lieferungId   String  @map("lieferung_id") @db.Uuid
-  artikelId     String  @map("artikel_id") @db.Uuid
-  anzahlGebinde Decimal @map("anzahl_gebinde") @db.Decimal(10, 2)
+  id                String  @id @default(uuid(7)) @db.Uuid
+  betriebId         String  @map("betrieb_id") @db.Uuid
+  lieferungId       String  @map("lieferung_id") @db.Uuid
+  artikelId         String  @map("artikel_id") @db.Uuid
+  /// Zeigt auf die bestellte Zeile. Bleibt leer bei Ware, die nicht bestellt
+  /// war. Bei einem Ersatzartikel zeigt sie weiterhin auf die Bestellposition
+  /// des bestellten Artikels — nur so bleibt die Bestellung nachvollziehbar.
+  bestellpositionId String? @map("bestellposition_id") @db.Uuid
 
-  betrieb   Betrieb   @relation(fields: [betriebId], references: [id], onDelete: Restrict)
-  lieferung Lieferung @relation(fields: [lieferungId], references: [id], onDelete: Cascade)
-  artikel   Artikel   @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+  /// Menge laut Papier des Fahrers.
+  anzahlGebindeLieferschein Decimal @map("anzahl_gebinde_lieferschein") @db.Decimal(10, 2)
+  /// Tatsächlich angenommene, brauchbare Menge. Diese geht in den Bestand.
+  anzahlGebindeTatsaechlich Decimal @map("anzahl_gebinde_tatsaechlich") @db.Decimal(10, 2)
+
+  /// Preis je Liefergebinde laut Lieferschein, in Cent. null heisst: nicht
+  /// erfasst — ausdrücklich nicht "kostenlos". Weicht er von Artikel.ekPreisCent
+  /// ab, gehört eine Abweichung der Art PREISABWEICHUNG dazu.
+  ekPreisCentLieferschein Int? @map("ek_preis_cent_lieferschein")
+
+  /// Zugesagtes Datum einer Nachlieferung. null heisst: keine Zusage. Eine
+  /// zugesagte Nachlieferung ist eine Tatsache vom Fahrer und nicht aus den
+  /// Mengen ableitbar — deshalb steht sie hier und nicht in einer Rechnung.
+  nachlieferungZugesagtBis DateTime? @map("nachlieferung_zugesagt_bis") @db.Date
+
+  betrieb         Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  lieferung       Lieferung        @relation(fields: [lieferungId], references: [id], onDelete: Cascade)
+  artikel         Artikel          @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+  bestellposition Bestellposition? @relation(fields: [bestellpositionId], references: [id], onDelete: Restrict)
+  abweichungen    Abweichung[]
 
   @@index([betriebId])
   @@index([lieferungId])
   @@index([artikelId])
+  @@index([bestellpositionId])
   @@map("lieferposition")
+}
+
+/// Zurückgegebenes Leergut einer Lieferung — Kästen, Fässer, Paletten.
+///
+/// Eigene Tabelle statt einer Positionsart an der Lieferposition: Leergut hat
+/// keinen Artikel im Stamm, geht in die andere Richtung und steht auf dem
+/// Lieferschein in einem eigenen Block. Zwischen die Ware gemischt wäre es in
+/// jeder Bestandsrechnung ein Sonderfall.
+model Leergutposition {
+  id                 String  @id @default(uuid(7)) @db.Uuid
+  betriebId          String  @map("betrieb_id") @db.Uuid
+  lieferungId        String  @map("lieferung_id") @db.Uuid
+  /// Freitext, z. B. "Kasten 24er" oder "Fass 50 l". Leergut hat keinen
+  /// Artikelstamm.
+  bezeichnung        String
+  /// Rückgabemenge laut Lieferschein und tatsächlich mitgegeben — dieselbe
+  /// Unterscheidung wie bei der Ware, in die Gegenrichtung.
+  anzahlLieferschein Decimal @map("anzahl_lieferschein") @db.Decimal(10, 2)
+  anzahlTatsaechlich Decimal @map("anzahl_tatsaechlich") @db.Decimal(10, 2)
+  /// Pfand je Einheit in Cent. null heisst: nicht bekannt.
+  pfandCentJeEinheit Int?    @map("pfand_cent_je_einheit")
+
+  betrieb   Betrieb   @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  lieferung Lieferung @relation(fields: [lieferungId], references: [id], onDelete: Cascade)
+
+  @@index([betriebId])
+  @@index([lieferungId])
+  @@map("leergutposition")
+}
+
+// ---------------------------------------------------------------------------
+// Abweichung und Reklamation
+// ---------------------------------------------------------------------------
+
+/// Ein reklamationswürdiger Sachverhalt aus dem Wareneingang.
+///
+/// Sie überlebt die Lieferung, an der sie entstanden ist: bis zur Gutschrift
+/// vergehen Wochen, und die Frist läuft ab der Annahme.
+///
+/// Kein Betragsfeld für den reklamierten Wert. Der ergibt sich aus der Menge
+/// und dem Preis der Lieferposition und wird gerechnet, nicht gespeichert.
+/// Gespeichert wird nur, was neue Tatsache ist: die tatsächlich erhaltene
+/// Gutschrift.
+model Abweichung {
+  id               String            @id @default(uuid(7)) @db.Uuid
+  betriebId        String            @map("betrieb_id") @db.Uuid
+  lieferpositionId String            @map("lieferposition_id") @db.Uuid
+  art              Abweichungsart
+  /// Betroffene Menge in Liefergebinden. Bei PREISABWEICHUNG 0 — dort ist die
+  /// Abweichung der Preis, nicht die Menge.
+  anzahlGebinde    Decimal           @map("anzahl_gebinde") @db.Decimal(10, 2)
+  status           Abweichungsstatus @default(OFFEN)
+  /// Erhaltene Gutschrift in Cent. null heisst: noch keine.
+  gutschriftCent   Int?              @map("gutschrift_cent")
+  notiz            String?
+  festgestelltAm   DateTime          @default(now()) @map("festgestellt_am") @db.Timestamptz(6)
+
+  betrieb        Betrieb               @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  lieferposition Lieferposition        @relation(fields: [lieferpositionId], references: [id], onDelete: Cascade)
+  verlauf        Abweichungsereignis[]
+
+  // Deckt die Arbeitsliste "offene Abweichungen, älteste zuerst" ab.
+  @@index([betriebId, status, festgestelltAm])
+  @@index([lieferpositionId])
+  @@map("abweichung")
+}
+
+/// Protokoll der Statuswechsel einer Abweichung: wer wann was getan hat.
+///
+/// Der gültige Stand steht an der Abweichung, nicht hier — dieses Journal
+/// beschreibt Übergänge und ist bewusst keine zweite Quelle für den aktuellen
+/// Status. `nachStatus` des jüngsten Eintrags muss gleich `Abweichung.status`
+/// sein; wer den Status ändert, schreibt beides in einer Transaktion.
+model Abweichungsereignis {
+  id           String             @id @default(uuid(7)) @db.Uuid
+  betriebId    String             @map("betrieb_id") @db.Uuid
+  abweichungId String             @map("abweichung_id") @db.Uuid
+  /// null beim ersten Eintrag, der die Abweichung anlegt.
+  vonStatus    Abweichungsstatus? @map("von_status")
+  nachStatus   Abweichungsstatus  @map("nach_status")
+  /// null, solange es keine Anmeldung gibt.
+  benutzerId   String?            @map("benutzer_id") @db.Uuid
+  notiz        String?
+  zeitpunkt    DateTime           @default(now()) @db.Timestamptz(6)
+
+  betrieb    Betrieb    @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  abweichung Abweichung @relation(fields: [abweichungId], references: [id], onDelete: Cascade)
+  benutzer   Benutzer?  @relation(fields: [benutzerId], references: [id], onDelete: Restrict)
+
+  @@index([betriebId])
+  @@index([abweichungId, zeitpunkt])
+  @@index([benutzerId])
+  @@map("abweichungsereignis")
 }
 
 // ---------------------------------------------------------------------------
 // Umsatzimport aus dem Kassensystem
 // ---------------------------------------------------------------------------
 
+/// Ein Kassenexport, so wie er hochgeladen wurde.
+///
+/// Der Zeitraum stammt aus dem Kopf der Datei ("Vom"/"Bis") und nicht aus dem
+/// Zeitpunkt des Uploads: welche Tage ein Export abdeckt, weiss nur der Export.
+/// Danach sucht die Auswertung ihre Umsätze.
 model Umsatzimport {
   id          String   @id @default(uuid(7)) @db.Uuid
   betriebId   String   @map("betrieb_id") @db.Uuid
   zeitraumVon DateTime @map("zeitraum_von") @db.Timestamptz(6)
   zeitraumBis DateTime @map("zeitraum_bis") @db.Timestamptz(6)
   dateiname   String
+  importiertAm DateTime @default(now()) @map("importiert_am") @db.Timestamptz(6)
 
   betrieb    Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
   positionen Umsatzposition[]
@@ -274,19 +596,35 @@ model Umsatzimport {
   @@map("umsatzimport")
 }
 
-/// Rohzeile aus dem Kassenexport. `posBezeichnung` bleibt als Text stehen und
-/// wird erst über Kassenartikel auf einen Artikel abgebildet.
+/// Eine gebuchte Menge aus dem Kassenexport, je Bezeichnung und Abrechnungsart.
+/// `posBezeichnung` bleibt als Text stehen und wird erst über Kassenartikel auf
+/// Lagerartikel abgebildet.
+///
+/// Die Abrechnungsart wird mitgeführt, weil der Export mehr kennt als Bar und
+/// Karte: gebuchter Bruch, Promotion, Debitor, Gutscheineinlösung. Alle nehmen
+/// Ware aus dem Lager, aber nur ein Teil davon ist Verkauf. Ohne dieses Feld
+/// wäre ein gebuchter Bruch nach dem Import nicht mehr von einem Verkauf zu
+/// unterscheiden — und ein Schwund, den jemand ordentlich gemeldet hat, sähe
+/// aus wie einer, den niemand erklären kann.
 model Umsatzposition {
   id             String  @id @default(uuid(7)) @db.Uuid
   betriebId      String  @map("betrieb_id") @db.Uuid
   umsatzimportId String  @map("umsatzimport_id") @db.Uuid
   posBezeichnung String  @map("pos_bezeichnung")
+  /// Text aus der Kasse, z. B. "Bar Im Haus" oder "Bruch Im Haus". Bewusst kein
+  /// Enum: die Kasse darf jederzeit eine neue Art einführen, und ein unbekannter
+  /// Wert soll den Import nicht abweisen.
+  abrechnungsart String  @map("abrechnungsart")
   menge          Decimal @db.Decimal(10, 2)
 
   betrieb      Betrieb      @relation(fields: [betriebId], references: [id], onDelete: Restrict)
   umsatzimport Umsatzimport @relation(fields: [umsatzimportId], references: [id], onDelete: Cascade)
 
+  // Je Import steht eine Bezeichnung höchstens einmal je Abrechnungsart. Der
+  // Export führt denselben Namen mitunter unter zwei PLUs; die Mengen werden
+  // beim Lesen zusammengezählt, damit hier keine zwei Zeilen entstehen, die
+  // niemand mehr auseinanderhalten kann. Indiziert zugleich umsatzimportId.
+  @@unique([umsatzimportId, posBezeichnung, abrechnungsart])
   @@index([betriebId])
-  @@index([umsatzimportId])
   @@map("umsatzposition")
 }

@@ -14,12 +14,23 @@
  */
 
 import { ZaehlungStatus } from '@/generated/prisma/enums'
+import { angemeldeterBenutzer } from '@/lib/anmeldung'
 import { prisma } from '@/lib/prisma'
 
 export async function POST(_request: Request, ctx: RouteContext<'/api/zaehlung/[id]/abschluss'>) {
   const { id } = await ctx.params
 
-  const zaehlung = await prisma.zaehlung.findUnique({ where: { id } })
+  const benutzer = await angemeldeterBenutzer()
+  if (benutzer === null) {
+    return Response.json({ fehler: 'Nicht angemeldet' }, { status: 401 })
+  }
+
+  // Über Id und Betrieb gesucht: eine fremde Zählung ist damit schlicht nicht
+  // gefunden — dieselbe Antwort wie für eine erfundene Id, und keine Auskunft
+  // darüber, welche Ids es anderswo gibt.
+  const zaehlung = await prisma.zaehlung.findFirst({
+    where: { id, betriebId: benutzer.betrieb.id },
+  })
   if (zaehlung === null) {
     return Response.json({ fehler: 'Zählung nicht gefunden' }, { status: 404 })
   }

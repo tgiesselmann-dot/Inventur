@@ -8,9 +8,17 @@ import { describe, expect, it } from 'vitest'
 import { EkPreisBezug, Zaehlmodus } from '@/generated/prisma/enums'
 import {
   EinheitenFehler,
+  anteilAusMengenangabe,
+  anteilJeAusschank,
+  ausschankLiter,
+  einheitenAusGebinden,
+  mengenangabeAusAnteil,
+  ekPreisCentAusGebindepreis,
   ekProEinheitCent,
+  gebindeFuerEinheiten,
   gesamtEinheiten,
   wertCent,
+  wertGebindeCent,
   type BepreisterArtikel,
   type ZaehlbarerArtikel,
 } from '@/lib/einheiten'
@@ -166,16 +174,200 @@ describe('wertCent', () => {
   })
 })
 
+describe('einheitenAusGebinden', () => {
+  it('rechnet Liefergebinde in Einheiten, unabhängig vom Zählmodus', () => {
+    // Der Karton Wein wird EINZELN gezählt — geliefert werden trotzdem 6 je
+    // Karton. gesamtEinheiten würde diese Eingabe zu Recht abweisen.
+    expect(einheitenAusGebinden(kartonWein, 2).toString()).toBe('12')
+    expect(() => gesamtEinheiten(kartonWein, 2, 0)).toThrow(EinheitenFehler)
+  })
+
+  it('rechnet halbe Gebinde mit', () => {
+    expect(einheitenAusGebinden(kastenBier, 0.5).toString()).toBe('12')
+  })
+
+  it('lässt das Fass bei sich selbst', () => {
+    expect(einheitenAusGebinden(fassPils, 3).toString()).toBe('3')
+  })
+
+  it('weist eine negative Liefermenge ab', () => {
+    expect(() => einheitenAusGebinden(kastenBier, -1)).toThrow(EinheitenFehler)
+  })
+})
+
+describe('gebindeFuerEinheiten', () => {
+  it('rundet 121 Flaschen auf sechs Kästen auf', () => {
+    // Fünf Kästen wären 120 — eine Flasche zu wenig, und die fällt erst auf,
+    // wenn das Regal leer ist.
+    expect(gebindeFuerEinheiten(kastenBier, 121)).toBe(6)
+  })
+
+  it('rundet auch eine einzelne fehlende Flasche auf einen ganzen Kasten', () => {
+    expect(gebindeFuerEinheiten(kastenBier, 1)).toBe(1)
+  })
+
+  it('lässt den vollen Kasten glatt', () => {
+    expect(gebindeFuerEinheiten(kastenBier, 48)).toBe(2)
+  })
+
+  it('braucht für nichts kein Gebinde', () => {
+    expect(gebindeFuerEinheiten(kastenBier, 0)).toBe(0)
+  })
+
+  it('rundet beim Fass auf ganze Fässer', () => {
+    expect(gebindeFuerEinheiten(fassPils, 3.2)).toBe(4)
+  })
+
+  it('ist die Gegenrichtung zu einheitenAusGebinden', () => {
+    // Zurückgerechnet deckt der Vorschlag den Bedarf immer, nie knapper.
+    const gebinde = gebindeFuerEinheiten(kastenBier, 121)
+    expect(einheitenAusGebinden(kastenBier, gebinde).greaterThanOrEqualTo(121)).toBe(true)
+  })
+
+  it('weist eine negative Menge ab', () => {
+    // Eine negative Fehlmenge ist keine Bestellung — der Aufrufer kappt sie
+    // vorher bei 0.
+    expect(() => gebindeFuerEinheiten(kastenBier, -1)).toThrow(EinheitenFehler)
+  })
+})
+
+describe('wertGebindeCent', () => {
+  it('bewertet einen Kasten mit dem Gebindepreis', () => {
+    expect(wertGebindeCent(kastenBier, 1)).toBe(1799)
+  })
+
+  it('bewertet mehrere Kästen ohne Rundungsdrift', () => {
+    // Über den Einheitspreis (75) wären es 7200 — der halbe Cent je Flasche
+    // summiert sich sonst über die Lieferung.
+    expect(wertGebindeCent(kastenBier, 4)).toBe(7196)
+  })
+
+  it('rechnet bei PRO_EINHEIT über die Gebindegrösse hoch', () => {
+    // Zwei Kartons Wein zu je 6 Flaschen à 8,90 EUR.
+    expect(wertGebindeCent(kartonWein, 2)).toBe(10680)
+  })
+
+  it('bewertet ein Fass als ganzes Gebinde', () => {
+    expect(wertGebindeCent(fassPils, 1)).toBe(9500)
+  })
+
+  it('gibt null statt 0 zurück, wenn kein Preis hinterlegt ist', () => {
+    expect(wertGebindeCent({ ...kastenBier, ekPreisCent: null }, 2)).toBeNull()
+  })
+})
+
+describe('ekPreisCentAusGebindepreis', () => {
+  it('lässt den Gebindepreis bei PRO_GEBINDE unverändert durch', () => {
+    expect(ekPreisCentAusGebindepreis(kastenBier, 1899)).toBe(1899)
+  })
+
+  it('verteilt den Gebindepreis bei PRO_EINHEIT auf die Einheiten', () => {
+    // Karton Wein zu 54,00 EUR, 6 Flaschen: 9,00 EUR je Flasche.
+    expect(ekPreisCentAusGebindepreis(kartonWein, 5400)).toBe(900)
+  })
+
+  it('rundet kaufmännisch je Einheit und lässt den Rundungsrest zu', () => {
+    // 17,99 EUR auf 24 Flaschen sind 74,958… Cent -> 75. Zurückgerechnet sind
+    // das 18,00 EUR je Kasten — der eine Cent ist der Preis des
+    // Einheitsbezugs, kein Fehler: wertCent rechnet ab hier mit 75 weiter.
+    expect(
+      ekPreisCentAusGebindepreis(
+        { ekPreisBezug: EkPreisBezug.PRO_EINHEIT, einheitenProGebinde: 24 },
+        1799,
+      ),
+    ).toBe(75)
+  })
+
+  it('weist Beträge ab, die keine ganzen Cent sind', () => {
+    expect(() => ekPreisCentAusGebindepreis(kastenBier, 17.99)).toThrow(EinheitenFehler)
+    expect(() => ekPreisCentAusGebindepreis(kastenBier, -1)).toThrow(EinheitenFehler)
+  })
+})
+
+describe('anteilJeAusschank und ausschankLiter', () => {
+  it('rechnet den Ausschank in den Einheiten-Anteil um', () => {
+    // Ein 0,3-l-Glas aus der Literflasche; ein 2-cl-Schnaps aus der 0,7er.
+    expect(anteilJeAusschank({ einheitsgroesseLiter: '1' }, '0.3').toString()).toBe('0.3')
+    expect(anteilJeAusschank({ einheitsgroesseLiter: '0.7' }, '0.02').toString()).toBe('0.029')
+  })
+
+  it('rechnet den Anteil zurück in Liter, ungerundet', () => {
+    expect(ausschankLiter({ einheitsgroesseLiter: '1' }, { einheitenProVerkauf: '0.06' }).toString()).toBe('0.06')
+    // Die Gegenrichtung des gerundeten Anteils: 0,029 der 0,7er sind 0,0203 l.
+    // Dass hier nicht exakt 2 cl herauskommen, ist der Preis der drei
+    // Nachkommastellen der Spalte — gerundet wird erst im Anzeigetext.
+    expect(ausschankLiter({ einheitsgroesseLiter: '0.7' }, { einheitenProVerkauf: '0.029' }).toString()).toBe('0.0203')
+  })
+
+  it('weist eine Flaschengrösse von null ab, in beiden Richtungen', () => {
+    expect(() => anteilJeAusschank({ einheitsgroesseLiter: 0 }, '0.02')).toThrow(EinheitenFehler)
+    expect(() => ausschankLiter({ einheitsgroesseLiter: 0 }, { einheitenProVerkauf: '0.02' })).toThrow(EinheitenFehler)
+  })
+})
+
+describe('anteilAusMengenangabe', () => {
+  it('rechnet cl, l und ganze Einheiten in den Anteil um', () => {
+    // 4 cl aus der 0,7er, ein 0,3-l-Glas aus der Literflasche, eine Flasche.
+    expect(anteilAusMengenangabe({ einheitsgroesseLiter: '0.7' }, '4', 'cl').toString()).toBe('0.057')
+    expect(anteilAusMengenangabe({ einheitsgroesseLiter: '1' }, '0.3', 'l').toString()).toBe('0.3')
+    expect(anteilAusMengenangabe({ einheitsgroesseLiter: '0.33' }, '1', 'einheit').toString()).toBe('1')
+  })
+
+  it('lässt ganze Einheiten unangetastet, auch als Bruch', () => {
+    // Anderthalb Flaschen sind der Anteil selbst — hier wird nichts geteilt,
+    // und die Flaschengrösse geht die Angabe nichts an.
+    expect(anteilAusMengenangabe({ einheitsgroesseLiter: '0.7' }, '1.5', 'einheit').toString()).toBe('1.5')
+  })
+})
+
+describe('mengenangabeAusAnteil', () => {
+  it('sagt einen gespeicherten Anteil in der Sprache der Theke', () => {
+    // Die drei Formen der Getränkekarte: Schnaps in cl, Glas in Litern,
+    // Flasche als Flasche.
+    const schnaps = mengenangabeAusAnteil({ einheitsgroesseLiter: '0.7' }, { einheitenProVerkauf: '0.057' })
+    expect(schnaps).toMatchObject({ einheit: 'cl' })
+    expect(schnaps.wert.toString()).toBe('4')
+
+    const glas = mengenangabeAusAnteil({ einheitsgroesseLiter: '1' }, { einheitenProVerkauf: '0.3' })
+    expect(glas).toMatchObject({ einheit: 'l' })
+    expect(glas.wert.toString()).toBe('0.3')
+
+    const flasche = mengenangabeAusAnteil({ einheitsgroesseLiter: '0.33' }, { einheitenProVerkauf: '2' })
+    expect(flasche).toMatchObject({ einheit: 'einheit' })
+    expect(flasche.wert.toString()).toBe('2')
+  })
+
+  it('bleibt beim Hin und Zurück beim selben Anteil', () => {
+    // Der Kreis, an dem die Vorbelegung des Mengenfelds hängt: aus 0,029 der
+    // 0,7er werden 2 cl, und die 2 cl werden wieder 0,029. Sonst änderte ein
+    // blosses Bestätigen den gespeicherten Wert.
+    const artikel = { einheitsgroesseLiter: '0.7' }
+    const angabe = mengenangabeAusAnteil(artikel, { einheitenProVerkauf: '0.029' })
+    expect(angabe.wert.toString()).toBe('2')
+    expect(anteilAusMengenangabe(artikel, angabe.wert, angabe.einheit).toString()).toBe('0.029')
+  })
+
+  it('legt die Litergrenze gerundet aus, wie der Kartentext', () => {
+    // 0,1 l Prosecco stehen gespeichert als 0,133 der 0,75er und sind exakt
+    // 0,09975 l — sie gehören auf die Literseite, nicht zu "10 cl".
+    const angabe = mengenangabeAusAnteil({ einheitsgroesseLiter: '0.75' }, { einheitenProVerkauf: '0.133' })
+    expect(angabe).toMatchObject({ einheit: 'l' })
+    expect(angabe.wert.toString()).toBe('0.1')
+  })
+})
+
 describe('Umrechnung existiert nur an einer Stelle', () => {
   // Der Auftrag an diese Datei ist, die einzige Umrechnung zwischen Gebinden und
   // Einheiten zu sein. Diese Prüfung schlägt fehl, sobald irgendwo sonst in src/
   // mit einheitenProGebinde gerechnet wird — dem Feld, über das die zweite
   // Implementierung zwangsläufig laufen müsste.
   const srcVerzeichnis = fileURLToPath(new URL('../src', import.meta.url))
-  // lib/artikelimport.ts setzt das Feld beim Anlegen eines Stammsatzes, es
-  // rechnet nicht damit: es liest die Gebindegrösse aus der Datei und schreibt
-  // sie hin. Eine Division steht dort nicht und darf dort nicht stehen.
-  const erlaubt = ['lib/einheiten.ts', 'lib/artikelimport.ts']
+  // lib/artikelimport.ts und lib/artikelstamm.ts setzen das Feld beim Anlegen
+  // bzw. Lesen eines Stammsatzes, sie rechnen nicht damit: die eine liest die
+  // Gebindegrösse aus der Datei, die andere aus dem Formular, und beide
+  // schreiben sie nur hin. Eine Division steht dort nicht und darf dort nicht
+  // stehen — der Test darunter prüft das nach.
+  const erlaubt = ['lib/einheiten.ts', 'lib/artikelimport.ts', 'lib/artikelstamm.ts']
 
   function tsDateien(verzeichnis: string): string[] {
     return readdirSync(verzeichnis, { withFileTypes: true }).flatMap((eintrag) => {
@@ -196,10 +388,13 @@ describe('Umrechnung existiert nur an einer Stelle', () => {
     expect(treffer).toEqual([])
   })
 
-  it('rechnet auch im Artikelimport nicht mit einheitenProGebinde, sondern setzt es nur', () => {
-    // Hält die Ausnahme oben eng: sobald dort ein Produkt oder ein Quotient mit
-    // dem Feld auftaucht, ist die zweite Rechenstelle da.
-    const quelle = readFileSync(join(srcVerzeichnis, 'lib/artikelimport.ts'), 'utf8')
-    expect(quelle).not.toMatch(/einheitenProGebinde\s*[*/]|[*/]\s*einheitenProGebinde/)
-  })
+  it.each(['lib/artikelimport.ts', 'lib/artikelstamm.ts'])(
+    'rechnet auch in %s nicht mit einheitenProGebinde, sondern setzt es nur',
+    (pfad) => {
+      // Hält die Ausnahme oben eng: sobald dort ein Produkt oder ein Quotient
+      // mit dem Feld auftaucht, ist die zweite Rechenstelle da.
+      const quelle = readFileSync(join(srcVerzeichnis, pfad), 'utf8')
+      expect(quelle).not.toMatch(/einheitenProGebinde\s*[*/]|[*/]\s*einheitenProGebinde/)
+    },
+  )
 })

@@ -20,6 +20,9 @@
 # production
 /build
 
+# lokale HTTPS-Zertifikate fürs Lager (Schlüssel gehören nie ins Repo)
+/zertifikate
+
 # misc
 .DS_Store
 *.pem

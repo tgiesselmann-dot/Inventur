@@ -91,6 +91,55 @@ export function parseCsvMitKopf(
 }
 
 /**
+ * Schreibt Zeilen als CSV — die Gegenrichtung zu `parseCsv`, für Dateien, die
+ * dieses Projekt verlässt.
+ *
+ * Die Vorgaben sind die derselben Windows-Welt geschuldet, aus der die
+ * Eingangsdateien kommen: Semikolon als Trenner, CRLF als Zeilenende, ein BOM
+ * am Anfang. Ohne das BOM zeigt Excel „Dörlemann" als „DÃ¶rlemann", und die
+ * Bestellung sieht nach Fehler aus, bevor sie gelesen wird.
+ *
+ * Gequotet wird nur, was es braucht: ein Feld mit Trenner, Anführungszeichen
+ * oder Zeilenumbruch. `parseCsv` liest das Ergebnis wieder ein.
+ */
+export function alsCsv(
+  zeilen: readonly (readonly string[])[],
+  optionen: CsvOptionen & { bom?: boolean } = {},
+): string {
+  const trenner = optionen.trenner ?? ';'
+  const bom = optionen.bom ?? true
+
+  const text = zeilen
+    .map((zeile) => zeile.map((feld) => quote(feld, trenner)).join(trenner))
+    .join('\r\n')
+
+  return `${bom ? '﻿' : ''}${text}${zeilen.length > 0 ? '\r\n' : ''}`
+}
+
+function quote(feld: string, trenner: string): string {
+  if (!feld.includes(trenner) && !feld.includes('"') && !/[\r\n]/.test(feld)) return feld
+  return `"${feld.split('"').join('""')}"`
+}
+
+/**
+ * Rohbytes einer hochgeladenen CSV als Text.
+ *
+ * Die Dateien kommen aus zwei Welten: neuere Exporte als UTF-8, ältere aus
+ * deutschem Windows als Windows-1252. Erst wird streng als UTF-8 gelesen;
+ * schlägt das fehl, ist es Windows-1252 — dort ist jede Bytefolge gültig,
+ * ein zweiter Fehlschlag ist also ausgeschlossen. Ohne diese Weiche würde
+ * "Dörlemann" aus einer alten Datei als "D�rlemann" im Stamm landen.
+ */
+export function dekodiereCsv(daten: ArrayBuffer | Uint8Array): string {
+  const bytes = daten instanceof Uint8Array ? daten : new Uint8Array(daten)
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes)
+  }
+}
+
+/**
  * Liest eine deutsche Dezimalzahl ("0,75", "8,58", "1.234,5") als Zeichenkette
  * in der englischen Schreibweise, wie Decimal und Number sie erwarten.
  * Leerer Text ergibt null — die Zelle war in der Excel leer.

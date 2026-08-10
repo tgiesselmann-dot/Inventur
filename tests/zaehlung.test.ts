@@ -7,6 +7,8 @@ import {
   dezimaltext,
   felder,
   fortschritt,
+  fortschrittsanteil,
+  kontrolltext,
   naechsterIndex,
   schritt,
   tasteAnwenden,
@@ -234,6 +236,21 @@ describe('fortschritt', () => {
   })
 })
 
+describe('fortschrittsanteil', () => {
+  it('gibt den Anteil der erfassten Artikel', () => {
+    expect(fortschrittsanteil({ gezaehlt: 1, gesamt: 4 })).toBe(0.25)
+  })
+
+  it('gibt 1, wenn alles erfasst ist', () => {
+    expect(fortschrittsanteil({ gezaehlt: 3, gesamt: 3 })).toBe(1)
+  })
+
+  it('gibt 0 statt NaN, wenn die Zählung keine Artikel hat', () => {
+    // Der Balken bekäme sonst eine ungültige Breite und liefe aus dem Bild.
+    expect(fortschrittsanteil({ gezaehlt: 0, gesamt: 0 })).toBe(0)
+  })
+})
+
 describe('ungezaehlte', () => {
   it('gibt die offenen Artikel in Zählreihenfolge', () => {
     const offen = ungezaehlte([colaKasten, ginFlasche, fassPils], new Set(['fass']))
@@ -254,5 +271,29 @@ describe('naechsterIndex', () => {
 
   it('gibt null, wenn am Ende alles erfasst ist', () => {
     expect(naechsterIndex(liste, new Set(['cola', 'fass', 'gin']), 2)).toBeNull()
+  })
+})
+
+describe('kontrolltext', () => {
+  it('rechnet Kästen plus lose Flaschen zusammen', () => {
+    expect(kontrolltext(colaKasten, { anzahlGebinde: '2', anzahlEinzeln: '3' })).toBe(
+      '= 51 Flaschen',
+    )
+  })
+
+  it('setzt die Einzahl bei genau einer Flasche', () => {
+    expect(kontrolltext(ginFlasche, { anzahlGebinde: '', anzahlEinzeln: '1' })).toBe('= 1 Flasche')
+  })
+
+  it('nennt das Fass beim Namen, statt Flaschen zu behaupten', () => {
+    // Die Einheit eines Fasses ist das Fass selbst.
+    expect(kontrolltext(fassPils, { anzahlGebinde: '1,5', anzahlEinzeln: '' })).toBe('= 1,5 Fässer')
+    expect(kontrolltext(fassPils, { anzahlGebinde: '1', anzahlEinzeln: '' })).toBe('= 1 Fass')
+  })
+
+  it('schweigt am unberührten Artikel', () => {
+    // "= 0 Flaschen" wäre eine Aussage über einen Bestand, den niemand
+    // gezählt hat.
+    expect(kontrolltext(colaKasten, { anzahlGebinde: '', anzahlEinzeln: '' })).toBeNull()
   })
 })

@@ -1,0 +1,132 @@
+﻿Umsatz nach Artikel und Abrechnungsart;;;;;;;;
+Datum;14.06.2026 16:11;;;;;;;
+Betrieb;Stadthafen;;;;;;;
+Filter;;;;;;;;
+Vom;01.01.2026;;;;;;;
+Bis;31.12.2026;;;;;;;
+;;;;;;;;
+;;;;;;;;
+Name;;PLU;Anzahl;Preis;Rabatt;Netto;MwSt;Brutto
+Gesamtumsatz;;;51382x;;-923,80;257280,6;35860,60;293141,20
+
+10 Nuggets;;2272;;5,00;;;;
+;Bar Im Haus;;1x;5,00;;4,67;0,33;5,00
+
+43er;;2271;;3,90;;;;
+;EC-/Kreditkarte Im Haus;;1x;3,90;-1,95;1,64;0,31;1,95
+
+Americano;;4022;;3,20;;;;
+;Bar Im Haus;;54x;3,20;;145,26;27,54;172,80
+;EC-/Kreditkarte Im Haus;;11x;3,20;;29,59;5,61;35,20
+Americano;;;65x;;;174,85;33,15;208,00
+
+Aperol Spritz;;2210;;7,90;;;;
+;Bar Im Haus;;146x;7,90;;969,44;183,96;1153,40
+;Debitor Im Haus;;12x;7,90;;79,68;15,12;94,80
+;EC-/Kreditkarte Im Haus;;136x;7,90;;903,04;171,36;1074,40
+Aperol Spritz;;;294x;;;1952,16;370,44;2322,60
+
+Aperol Spritz;;3181;;7,90;;;;
+;Bar Im Haus;;157x;7,90;;1042,48;197,82;1240,30
+;Debitor Im Haus;;3x;7,90;;19,92;3,78;23,70
+;EC-/Kreditkarte Im Haus;;197x;7,90;-3,95;1304,76;247,59;1552,35
+Aperol Spritz;;;357x;;-3,95;2367,16;449,19;2816,35
+
+Aperol Spritz;;3344;;7,90;;;;
+;Bar Im Haus;;164x;7,90;;1088,96;206,64;1295,60
+;EC-/Kreditkarte Im Haus;;139x;7,90;;922,96;175,14;1098,10
+Aperol Spritz;;;303x;;;2011,92;381,78;2393,70
+
+Coca Cola;;3121;;3,90;;;;
+;Bar Im Haus;;40x;3,90;;131,20;24,80;156,00
+;Debitor Im Haus;;7x;3,90;;22,96;4,34;27,30
+;EC-/Kreditkarte Im Haus;;34x;3,90;;111,52;21,08;132,60
+Coca Cola;;;81x;;;265,68;50,22;315,90
+
+Coca Cola;;3305;;3,90;;;;
+;Bar Im Haus;;189x;3,90;;619,92;117,18;737,10
+;EC-/Kreditkarte Im Haus;;97x;3,90;;318,15;60,15;378,30
+Coca Cola;;;286x;;;938,07;177,33;1115,40
+
+Coca Cola 0,33l;;3121;;3,90;;;;
+;Bar Im Haus;;399x;3,90;;1308,69;247,41;1556,10
+;Debitor Im Haus;;11x;3,90;;36,08;6,82;42,90
+;EC-/Kreditkarte Im Haus;;413x;3,90;-1,95;1352,94;255,81;1608,75
+Coca Cola 0,33l;;;823x;;-1,95;2697,71;510,04;3207,75
+
+Gerolst. Sprudel 0,25l;;3125;;3,20;;;;
+;Bar Im Haus;;272x;3,20;;731,68;138,72;870,40
+;Debitor Im Haus;;7x;3,20;;18,83;3,57;22,40
+;EC-/Kreditkarte Im Haus;;286x;3,20;;769,34;145,86;915,20
+Gerolst. Sprudel 0,25l;;;565x;;;1519,85;288,15;1808,00
+
+Gerolst. Sprudel 0,25l;;3422;;3,20;;;;
+;Bar Im Haus;;99x;3,20;;266,31;50,49;316,80
+;EC-/Kreditkarte Im Haus;;46x;3,20;;123,74;23,46;147,20
+Gerolst. Sprudel 0,25l;;;145x;;;390,05;73,95;464,00
+
+Veltins 0,4l;;3148;;5,50;;;;
+;Bar Im Haus;;677x;5,50;;3127,77;595,73;3723,50
+;Debitor Im Haus;;37x;5,50;;170,94;32,56;203,50
+;EC-/Kreditkarte Im Haus;;707x;5,50;;3266,38;622,12;3888,50
+Veltins 0,4l;;;1421x;;;6565,09;1250,41;7815,50
+
+Vodka Shot 2cl;;3204;;3,00;;;;
+;Bar Im Haus;;8x;3,00;;20,16;3,84;24,00
+;Debitor Im Haus;;27x;3,00;;68,04;12,96;81,00
+;EC-/Kreditkarte Im Haus;;42x;3,00;-1,50;104,58;19,92;124,50
+Vodka Shot 2cl;;;77x;;-1,50;192,78;36,72;229,50
+
+43er;;2271;;3,90;;;;
+;Promotion intern Im Haus;;0x;3,90;;0,00;0,00;0,00
+
+Americano;;4022;;3,20;;;;
+;Bruch Im Haus;;1x;3,20;;2,69;0,51;3,20
+;Promotion intern Im Haus;;1x;3,20;;2,69;0,51;3,20
+Americano;;;2x;;;5,38;1,02;6,40
+
+Aperol Spritz;;2210;;7,90;;;;
+;Bruch Im Haus;;2x;7,90;;13,28;2,52;15,80
+;Promotion extern Im Haus;;9x;7,90;;59,76;11,34;71,10
+Aperol Spritz;;;11x;;;73,04;13,86;86,90
+
+Aperol Spritz;;3181;;7,90;;;;
+;Bruch Im Haus;;5x;7,90;;33,20;6,30;39,50
+;Promotion extern Im Haus;;23x;7,90;;152,72;28,98;181,70
+;Promotion intern Im Haus;;2x;7,90;;13,28;2,52;15,80
+Aperol Spritz;;;30x;;;199,20;37,80;237,00
+
+Aperol Spritz;;3344;;7,90;;;;
+;Promotion extern Im Haus;;18x;7,90;;119,50;22,70;142,20
+
+Coca Cola;;3121;;3,90;;;;
+;Promotion extern Im Haus;;9x;3,90;;29,52;5,58;35,10
+;Promotion intern Im Haus;;2x;3,90;;6,56;1,24;7,80
+Coca Cola;;;11x;;;36,08;6,82;42,90
+
+Coca Cola;;3305;;3,90;;;;
+;Promotion extern Im Haus;;4x;3,90;;13,12;2,48;15,60
+
+Coca Cola 0,33l;;3121;;3,90;;;;
+;Bruch Im Haus;;6x;3,90;;19,68;3,72;23,40
+;Promotion extern Im Haus;;30x;3,90;;98,37;18,63;117,00
+;Promotion intern Im Haus;;21x;3,90;;68,88;13,02;81,90
+Coca Cola 0,33l;;;57x;;;186,93;35,37;222,30
+
+Gerolst. Sprudel 0,25l;;3125;;3,20;;;;
+;Bruch Im Haus;;4x;3,20;;10,76;2,04;12,80
+;Promotion extern Im Haus;;17x;3,20;;45,73;8,67;54,40
+;Promotion intern Im Haus;;3x;3,20;;8,07;1,53;9,60
+Gerolst. Sprudel 0,25l;;;24x;;;64,56;12,24;76,80
+
+Gerolst. Sprudel 0,25l;;3422;;3,20;;;;
+;Bruch Im Haus;;1x;3,20;;2,69;0,51;3,20
+
+Veltins 0,4l;;3148;;5,50;;;;
+;Bruch Im Haus;;43x;5,50;;198,66;37,84;236,50
+;Promotion extern Im Haus;;71x;5,50;;328,02;62,48;390,50
+;Promotion intern Im Haus;;1x;5,50;;4,62;0,88;5,50
+Veltins 0,4l;;;115x;;;531,30;101,20;632,50
+
+Vodka Shot 2cl;;3204;;3,00;;;;
+;Promotion extern Im Haus;;6x;3,00;;15,12;2,88;18,00

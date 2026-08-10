@@ -145,9 +145,21 @@ export type Sammelstatus =
   | { art: 'gespeichert' }
   | { art: 'sendet'; offen: number }
   | { art: 'wartet'; offen: number }
+  | { art: 'abgelehnt'; offen: number }
+  | { art: 'abgemeldet'; offen: number }
 
 /**
- * Was oben in der Maske steht. Bewusst drei Zustände und nicht mehr: der Zähler
+ * Warum ein Stapel liegenblieb.
+ *
+ * `abgemeldet` ist die abgelaufene Sitzung (401) und deshalb ein eigener Fall:
+ * „Erneut versuchen" hilft dagegen nichts, und wer das nicht liest, tippt
+ * dreimal darauf, während die Werte im Gerät liegen. Alles andere ist eine
+ * Ablehnung, die der Zähler nicht selbst beheben kann.
+ */
+export type Ablehnungsgrund = 'abgelehnt' | 'abgemeldet' | null
+
+/**
+ * Was oben in der Maske steht. Bewusst vier Zustände und nicht mehr: der Zähler
  * im Lager will wissen, ob er das Handy weglegen darf, nicht wie die
  * Warteschlange aufgebaut ist.
  *
@@ -159,10 +171,19 @@ export type Sammelstatus =
  * offener Wert bei vorhandenem Netz ist immer nur Sekunden vom Server entfernt;
  * ihn in dieser Zeit als "wartet auf Netz" auszuweisen, wäre eine falsche
  * Nachricht über einen Zustand, den der Zähler nicht beheben kann.
+ *
+ * "Abgelehnt" schlägt "wartet": eine Ablehnung ist eine Antwort des Servers,
+ * kein Netzproblem — noch ein Funkloch dazu ändert nichts daran, dass diese
+ * Werte von allein nicht mehr ankommen.
  */
-export function sammelStatus(eintraege: readonly Eintrag[], offline: boolean): Sammelstatus {
+export function sammelStatus(
+  eintraege: readonly Eintrag[],
+  offline: boolean,
+  grund: Ablehnungsgrund = null,
+): Sammelstatus {
   const offen = eintraege.filter(istOffen).length
   if (offen === 0) return { art: 'gespeichert' }
+  if (grund !== null) return { art: grund, offen }
   return offline ? { art: 'wartet', offen } : { art: 'sendet', offen }
 }
 
@@ -175,6 +196,17 @@ export function statusText(status: Sammelstatus): string {
       return 'Wird gespeichert …'
     case 'wartet':
       return status.offen === 1 ? '1 Wert wartet auf Netz' : `${status.offen} Werte warten auf Netz`
+    case 'abgelehnt':
+      return status.offen === 1
+        ? 'Übertragung fehlgeschlagen · 1 Wert offen'
+        : `Übertragung fehlgeschlagen · ${status.offen} Werte offen`
+    // Kein „fehlgeschlagen": nichts ist kaputt, die Sitzung ist abgelaufen. Der
+    // Satz nennt die Handlung, die hilft — und sagt zugleich, dass die Werte im
+    // Gerät liegen und nicht weg sind.
+    case 'abgemeldet':
+      return status.offen === 1
+        ? 'Anmeldung abgelaufen · 1 Wert liegt im Gerät'
+        : `Anmeldung abgelaufen · ${status.offen} Werte liegen im Gerät`
     default: {
       const unbekannt: never = status
       throw new Error(`Unbekannter Status: ${JSON.stringify(unbekannt)}`)

@@ -15,6 +15,8 @@
 
 import { notFound } from 'next/navigation'
 
+import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
 import { vomServer, type Eintrag } from '@/offline/warteschlange'
 
@@ -22,9 +24,12 @@ import { Zaehlmaske } from './zaehlmaske'
 
 export default async function Page({ params }: PageProps<'/zaehlung/[id]'>) {
   const { id } = await params
+  if (!istKennung(id)) notFound()
 
-  const zaehlung = await prisma.zaehlung.findUnique({
-    where: { id },
+  // Über Id und Betrieb gesucht: eine fremde Zählung ist damit nicht gefunden.
+  const betrieb = await aktuellerBetrieb()
+  const zaehlung = await prisma.zaehlung.findFirst({
+    where: { id, betriebId: betrieb.id },
     include: { positionen: true },
   })
   if (zaehlung === null) notFound()

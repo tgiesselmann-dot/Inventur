@@ -16,7 +16,7 @@
  */
 
 import { Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
-import type { ZaehlbarerArtikel } from '@/lib/einheiten'
+import { gesamtEinheiten, type ZaehlbarerArtikel } from '@/lib/einheiten'
 
 /**
  * Die Felder eines Artikels, die die Zählmaske braucht.
@@ -72,6 +72,66 @@ const GEBINDE_BESCHRIFTUNG: Record<Gebindeart, string> = {
   [Gebindeart.KARTON]: 'Kartons',
   [Gebindeart.FASS]: 'Fässer',
   [Gebindeart.EINZELFLASCHE]: 'Flaschen',
+}
+
+const GEBINDE_EINZAHL: Record<Gebindeart, string> = {
+  [Gebindeart.KASTEN]: 'Kasten',
+  [Gebindeart.KARTON]: 'Karton',
+  [Gebindeart.FASS]: 'Fass',
+  [Gebindeart.EINZELFLASCHE]: 'Flasche',
+}
+
+/**
+ * Wie das Liefergebinde in der Mehrzahl heisst — "Kästen", "Fässer".
+ *
+ * Exportiert, weil der Wareneingang dieselbe Beschriftung braucht: dort werden
+ * ebenfalls Gebinde gezählt, nur an der Rampe statt im Regal. Zwei Listen
+ * derselben vier Wörter würden auseinanderlaufen, sobald eine Gebindeart
+ * dazukommt.
+ */
+export function gebindeBeschriftung(gebindeart: Gebindeart): string {
+  return GEBINDE_BESCHRIFTUNG[gebindeart]
+}
+
+/**
+ * Wie das Liefergebinde in der Einzahl heisst — "Kasten", "Fass".
+ *
+ * Gebraucht, wo eine Aussage je Gebinde gilt und nicht über eine Menge geht:
+ * "0,40 EUR je Kasten zu viel berechnet". Ohne sie stünde an solchen Stellen
+ * `gebindeMenge('1', art).slice(2)` — eine Eins erfinden, um sie gleich wieder
+ * abzuschneiden.
+ */
+export function gebindeEinzahl(gebindeart: Gebindeart): string {
+  return GEBINDE_EINZAHL[gebindeart]
+}
+
+const ZAEHLMODUS_TEXT: Record<Zaehlmodus, string> = {
+  [Zaehlmodus.GEBINDE_PLUS_EINZELN]: 'Gebinde plus einzeln',
+  [Zaehlmodus.EINZELN]: 'Nur einzeln',
+  [Zaehlmodus.FASS]: 'Fass',
+}
+
+/**
+ * Wie der Zählmodus in Liste, Maske und Importvorschau heisst. Steht hier bei
+ * den übrigen Beschriftungen der Zählwelt — der Artikelstamm und der
+ * Artikelimport brauchen dasselbe Wort, und artikelimport.ts darf
+ * artikelstamm.ts nicht importieren (artikelstamm liest bereits von dort).
+ */
+export function zaehlmodusText(modus: Zaehlmodus): string {
+  return ZAEHLMODUS_TEXT[modus]
+}
+
+/**
+ * Eine Menge mit ihrem Gebinde: "1 Kasten", "2 Kästen", "0,5 Fässer".
+ *
+ * Nur die glatte Eins bekommt die Einzahl. "1,0" schreibt hier niemand, und ein
+ * halbes Fass ist sprachlich eine Mehrzahl — dieselbe Regel wie im Deutschen
+ * überall sonst.
+ */
+export function gebindeMenge(anzahl: string, gebindeart: Gebindeart): string {
+  const einzahl = dezimaltext(anzahl) === '1'
+  const wort = einzahl ? GEBINDE_EINZAHL[gebindeart] : GEBINDE_BESCHRIFTUNG[gebindeart]
+  return `${alsEingabe(dezimaltext(anzahl))} ${wort}`
 }
 
 /**
@@ -212,6 +272,32 @@ export function alsPosition(
   }
 }
 
+/**
+ * Die Kontrollzeile unter den Eingabefeldern: was die Eingabe zusammengerechnet
+ * bedeutet — "= 51 Flaschen", "= 1 Flasche", beim Fass "= 1,5 Fässer".
+ *
+ * `null` am unberührten Artikel: dort wäre "= 0" eine Aussage über einen
+ * Bestand, den niemand gezählt hat. Gerechnet wird über `gesamtEinheiten`, das
+ * Einheitenwort kommt aus der Gebindetabelle oben — beim FASS ist die Einheit
+ * das Fass selbst, "3 Flaschen" für drei Fässer wäre eine falsche Auskunft.
+ */
+export function kontrolltext(artikel: ZaehlArtikel, eingabe: Zaehleingabe): string | null {
+  if (eingabe.anzahlGebinde === '' && eingabe.anzahlEinzeln === '') return null
+
+  const position = alsPosition(artikel, eingabe)
+  const einheiten = gesamtEinheiten(artikel, position.anzahlGebinde, position.anzahlEinzeln)
+  const fass = artikel.zaehlmodus === Zaehlmodus.FASS
+  const wort = fass
+    ? einheiten.equals(1)
+      ? gebindeEinzahl(artikel.gebindeart)
+      : gebindeBeschriftung(artikel.gebindeart)
+    : einheiten.equals(1)
+      ? 'Flasche'
+      : 'Flaschen'
+
+  return `= ${alsEingabe(einheiten.toString())} ${wort}`
+}
+
 /** Ein Abschnitt der Liste: ein zusammenhängender Block gleicher Kategorie. */
 export type Abschnitt = {
   kategorie: string
@@ -270,6 +356,19 @@ export function fortschritt(
     gezaehlt: artikel.filter((eintrag) => erfasst.has(eintrag.id)).length,
     gesamt: artikel.length,
   }
+}
+
+/**
+ * Der Anteil der erfassten Artikel, 0 bis 1 — die Breite des Balkens unter dem
+ * Kopf der Zählmaske.
+ *
+ * Steht hier und nicht in der Maske, weil auch eine Balkenbreite eine gerechnete
+ * Zahl ist. Eine Zählung ohne Artikel gibt 0 statt NaN: der Balken bleibt dann
+ * leer, statt aus dem Bild zu laufen.
+ */
+export function fortschrittsanteil(stand: Fortschritt): number {
+  if (stand.gesamt === 0) return 0
+  return stand.gezaehlt / stand.gesamt
 }
 
 /** Die noch nicht erfassten Artikel, in Zählreihenfolge. */

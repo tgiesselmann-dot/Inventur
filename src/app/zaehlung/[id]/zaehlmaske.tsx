@@ -16,18 +16,27 @@
  * Zwei Berührungen im Normalfall: eine Ziffer (der Wert steht und ist
  * gespeichert), dann "weiter". Wer an einem leeren Fach nichts eingibt,
  * bestätigt mit "weiter" die Null — die Taste sagt vorher, was sie speichert.
+ *
+ * Alles Auslösende liegt im unteren Drittel, mit genau einer Ausnahme: "Liste"
+ * im Kopf, bewusst weit weg vom Daumen, damit sie nicht versehentlich getroffen
+ * wird und die Fokusansicht wegspringt. Alles darüber ist Anzeige — die
+ * Wertkacheln ebenso wie der grüne Balken über dem Block. Zwischen den beiden
+ * Kacheln wechselt die Wechseltaste im Ziffernblock, abgeschlossen wird in der
+ * Liste, wo die Schaltfläche im Fuss steht.
  */
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
 
 import { ZaehlungStatus } from '@/generated/prisma/enums'
-import { gesamtEinheiten } from '@/lib/einheiten'
 import {
   alsEingabe,
   alsPosition,
   felder,
   fortschritt,
+  fortschrittsanteil,
   inZaehlreihenfolge,
+  kontrolltext,
   naechsterIndex,
   schritt,
   tasteAnwenden,
@@ -37,11 +46,18 @@ import {
   type ZaehlArtikel,
   type Zaehleingabe,
 } from '@/lib/zaehlung'
+import { alsDatumstext } from '@/lib/datum'
 import { useZaehlstand } from '@/offline/verwenden'
-import { statusText, type Eintrag } from '@/offline/warteschlange'
+import { type Eintrag } from '@/offline/warteschlange'
+import { Fortschrittsbalken } from '@/ui/fortschrittsbalken'
+import { Schaltflaeche } from '@/ui/schaltflaeche'
+import { Statuszeile } from '@/ui/statuszeile'
+import { Vollbild } from '@/ui/vollbild'
+import { Wertfeld } from '@/ui/wertfeld'
+import { Ziffernblock } from '@/ui/ziffernblock'
+import { Ladezustand } from '@/ui/zustand'
 
 import { Uebersicht } from './uebersicht'
-import { Ziffernblock } from './ziffernblock'
 
 const LEER: Zaehleingabe = { anzahlGebinde: '', anzahlEinzeln: '' }
 
@@ -54,11 +70,19 @@ type Props = {
 }
 
 export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege }: Props) {
+  const router = useRouter()
   const liste = useMemo(() => inZaehlreihenfolge(artikel), [artikel])
   const stand = useZaehlstand(zaehlungId, liste, serverEintraege, { datum, status })
 
+  const abgeschlossen = status === ZaehlungStatus.ABGESCHLOSSEN
+
   const [index, setIndex] = useState(0)
-  const [ansicht, setAnsicht] = useState<'fokus' | 'uebersicht'>('fokus')
+  // Eine abgeschlossene Zählung öffnet als Liste, nicht als Eingabe: der
+  // Server nimmt keine Werte mehr an, und ein Ziffernblock, dessen Eingaben
+  // nie ankommen, sähe nur so aus, als würde er speichern.
+  const [ansicht, setAnsicht] = useState<'fokus' | 'uebersicht'>(
+    abgeschlossen ? 'uebersicht' : 'fokus',
+  )
   const [aktivesFeld, setAktivesFeld] = useState<Feldname | null>(null)
   /** Was gerade getippt wurde. null heisst: es gilt der gespeicherte Wert. */
   const [entwurf, setEntwurf] = useState<Zaehleingabe | null>(null)
@@ -68,6 +92,8 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
   const aktuell = liste[index]
   const meineFelder = useMemo(() => (aktuell ? felder(aktuell) : []), [aktuell])
   const feld = meineFelder.find((eintrag) => eintrag.name === aktivesFeld) ?? meineFelder[0]
+  /** Das Feld, in das die Wechseltaste springt. Fehlt beim Artikel mit einem Feld. */
+  const anderesFeld = meineFelder.find((eintrag) => eintrag.name !== feld?.name)
 
   /** Der gespeicherte Wert des aktuellen Artikels, als Eingabetext. */
   const gespeichert = useMemo((): Zaehleingabe => {
@@ -103,9 +129,26 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
     return <p className="p-6">Diese Zählung hat keine aktiven Artikel.</p>
   }
 
+  // Bis der lokale Speicher gelesen ist, bleibt die Maske zu: wer vorher
+  // tippte, dessen Eingabe würde vom Zusammenführen mit dem Gerätestand
+  // überschrieben. Die Balken halten die Zeilenmasse — beim Öffnen springt
+  // nichts.
+  if (stand.laedt) {
+    return (
+      <Vollbild>
+        <header className="flex shrink-0 items-center bg-surface px-4 pt-2 pb-3.5">
+          <p className="text-zeile text-text-muted">Zählung wird geöffnet …</p>
+        </header>
+        <div aria-hidden className="h-[3px] shrink-0 bg-border" />
+        <div className="flex-1 overflow-hidden p-2">
+          <Ladezustand zeilen={6} />
+        </div>
+      </Vollbild>
+    )
+  }
+
   const gezaehlt = fortschritt(liste, stand.erfasst)
   const offen = ungezaehlte(liste, stand.erfasst)
-  const abgeschlossen = status === ZaehlungStatus.ABGESCHLOSSEN
 
   function beiTaste(taste: Taste) {
     uebernehmen({ ...werte, [feld!.name]: tasteAnwenden(werte[feld!.name], taste, feld!.dezimal) })
@@ -135,7 +178,10 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
       const ergebnis = (await antwort.json()) as { fehlend?: { id: string }[] }
 
       if (antwort.ok) {
-        window.location.reload()
+        // Weiter auf das Ergebnis und nicht zurück in die Maske: der Abschluss
+        // endet nicht mit einer Meldung, sondern mit einem Bildschirm, der
+        // sagt, was gezählt wurde.
+        router.push(`/zaehlung/${zaehlungId}/abschluss`)
         return
       }
       if (antwort.status === 409) {
@@ -157,25 +203,45 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
   const alleErfasst = gezaehlt.gezaehlt === gezaehlt.gesamt
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{aktuell.kategorie}</p>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">{statusText(stand.status)}</p>
+    <Vollbild>
+      <header className="flex shrink-0 items-center gap-3.5 bg-surface px-4 pt-2 pb-3.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <p className="truncate text-zeile">
+            {abgeschlossen ? `Zählung vom ${alsDatumstext(new Date(datum))}` : aktuell.kategorie}
+          </p>
+          {/* Abgeschlossen gibt es keine Warteschlange mehr, deren Stand hier
+              stehen könnte — der Fuss der Liste sagt stattdessen, dass die
+              Werte feststehen. */}
+          {!abgeschlossen && (
+            <Statuszeile status={stand.status} aufErneut={() => void stand.senden()} />
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="tabular-nums text-sm font-semibold">
-            {gezaehlt.gezaehlt} von {gezaehlt.gesamt}
+        <span className="shrink-0 text-sm font-medium text-text-muted">
+          {gezaehlt.gezaehlt} von {gezaehlt.gesamt}
+        </span>
+        {/* Die Kachel bleibt 56px hoch und trägt ihre Höhe trotzdem nicht in den
+            Kopf: der negative Rand lässt sie in dessen Polsterung hineinragen,
+            statt ihn auf Tastenhöhe aufzublasen. */}
+        {!abgeschlossen && (
+          <span className="-my-2 flex shrink-0">
+            <Schaltflaeche
+              art="sekundaer"
+              onClick={() => setAnsicht(ansicht === 'fokus' ? 'uebersicht' : 'fokus')}
+            >
+              {ansicht === 'fokus' ? 'Liste' : 'Zählen'}
+            </Schaltflaeche>
           </span>
-          <button
-            type="button"
-            className="h-14 rounded-xl bg-zinc-100 px-4 text-sm font-medium dark:bg-zinc-800"
-            onClick={() => setAnsicht(ansicht === 'fokus' ? 'uebersicht' : 'fokus')}
-          >
-            {ansicht === 'fokus' ? 'Liste' : 'Zählen'}
-          </button>
-        </div>
+        )}
       </header>
+
+      {/* Der Zähler im Kopf sagt dieselbe Zahl in Worten. */}
+      <div className="shrink-0">
+        <Fortschrittsbalken
+          fein
+          anteil={fortschrittsanteil(gezaehlt)}
+          rolle={alleErfasst ? 'confirm' : 'primary'}
+        />
+      </div>
 
       {ansicht === 'uebersicht' ? (
         <Uebersicht
@@ -186,76 +252,65 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
           fehlendNachAbschluss={abschlussFehlt}
           alleErfasst={alleErfasst}
           abgeschlossen={abgeschlossen}
+          ergebnisZiel={`/zaehlung/${zaehlungId}/abschluss`}
           schliesst={schliesst}
           aufArtikel={gehZu}
           aufAbschluss={() => void beiAbschluss()}
         />
       ) : (
         <>
-          <main className="flex flex-1 flex-col justify-center overflow-y-auto px-4 py-3">
-            <h1 className="text-3xl leading-tight font-semibold">{aktuell.name}</h1>
-            <p className="mt-1 text-base text-zinc-500 dark:text-zinc-400">
-              {aktuell.lieferGebindeText}
-            </p>
-
-            {!aktuell.schwundfaehig && (
-              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                Wird gezählt, aber nicht auf Schwund geprüft.
+          <main className="flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-6 text-center">
+            <div className="flex flex-col items-center gap-2">
+              <h1 className="text-titel text-balance">{aktuell.name}</h1>
+              <p className="text-zeile font-normal text-text-muted">
+                {aktuell.lieferGebindeText}
               </p>
-            )}
 
-            <div className="mt-5 flex gap-2">
-              {meineFelder.map((eintrag) => {
-                const aktiv = eintrag.name === feld.name
-                return (
-                  <button
-                    key={eintrag.name}
-                    type="button"
-                    onClick={() => setAktivesFeld(eintrag.name)}
-                    aria-pressed={aktiv}
-                    // Ohne diesen Namen liest eine Sprachausgabe nur den
-                    // Gedankenstrich vor, mit dem ein leeres Feld dasteht.
-                    aria-label={`${eintrag.beschriftung}: ${
-                      werte[eintrag.name] === '' ? 'kein Wert' : werte[eintrag.name]
-                    }`}
-                    className={`flex h-20 flex-1 flex-col items-start justify-center rounded-xl border-2 px-3 text-left ${
-                      aktiv
-                        ? 'border-sky-600 bg-sky-50 dark:bg-sky-950'
-                        : 'border-zinc-200 dark:border-zinc-800'
-                    }`}
-                  >
-                    <span className="text-3xl font-semibold tabular-nums">
-                      {werte[eintrag.name] === '' ? (
-                        <span className="text-zinc-300 dark:text-zinc-600">—</span>
-                      ) : (
-                        werte[eintrag.name]
-                      )}
-                    </span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {eintrag.beschriftung}
-                    </span>
-                  </button>
-                )
-              })}
+              {!aktuell.schwundfaehig && (
+                <p className="max-w-[32ch] text-sm text-text-muted">
+                  Wird gezählt, aber nicht auf Schwund geprüft.
+                </p>
+              )}
             </div>
 
-            {meineFelder.length === 2 && <Kontrollzeile artikel={aktuell} werte={werte} />}
+            <div className="flex w-full flex-col gap-3">
+              <div className="flex gap-3">
+                {meineFelder.map((eintrag) => (
+                  <Wertfeld
+                    key={eintrag.name}
+                    wert={werte[eintrag.name]}
+                    beschriftung={eintrag.beschriftung}
+                    aktiv={eintrag.name === feld.name}
+                  />
+                ))}
+              </div>
+
+              {meineFelder.length === 2 && <Kontrollzeile artikel={aktuell} werte={werte} />}
+            </div>
           </main>
 
-          <footer className="shrink-0 border-t border-zinc-200 dark:border-zinc-800">
+          <footer className="shrink-0 border-t border-border bg-surface">
             {alleErfasst && !abgeschlossen && (
-              <button
-                type="button"
-                className="h-14 w-full bg-emerald-600 px-4 text-base font-medium text-white disabled:opacity-50"
-                onClick={() => void beiAbschluss()}
-                disabled={schliesst}
+              <p
+                role="status"
+                className="mx-2 mt-2.5 flex items-center gap-2.5 rounded-ctl bg-confirm-soft px-4 py-3 text-sm font-semibold text-confirm-soft-on"
               >
-                {schliesst ? 'Wird abgeschlossen…' : 'Alle gezählt — Zählung abschliessen'}
-              </button>
+                <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-confirm" />
+                Alle gezählt — Abschluss über „Liste“
+              </p>
             )}
             <Ziffernblock
               dezimal={feld.dezimal}
               weiterText={weiterText(werte[feld.name], feld.beschriftung, index, liste.length)}
+              weiterRolle={alleErfasst && !abgeschlossen ? 'confirm' : 'primary'}
+              feldwechsel={
+                anderesFeld === undefined
+                  ? undefined
+                  : {
+                      ziel: anderesFeld.beschriftung,
+                      aufWechsel: () => setAktivesFeld(anderesFeld.name),
+                    }
+              }
               aufTaste={beiTaste}
               aufSchritt={beiSchritt}
               aufWeiter={beiWeiter}
@@ -263,31 +318,27 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
           </footer>
         </>
       )}
-    </div>
+    </Vollbild>
   )
 }
 
 /**
  * Die Kontrolle unter den beiden Feldern: was die Eingabe zusammengerechnet
- * bedeutet. Gerechnet wird über `gesamtEinheiten` — die einzige Stelle im
- * Projekt, die Gebinde in Einheiten umrechnet.
+ * bedeutet. Text samt Einheitenwort kommt aus `kontrolltext` — dort steht auch,
+ * warum ein Fass keine "Flaschen" bekommt.
  */
 function Kontrollzeile({ artikel, werte }: { artikel: ZaehlArtikel; werte: Zaehleingabe }) {
-  // Am unberührten Artikel bliebe sonst "= 0 Flaschen" stehen — eine Aussage
-  // über einen Bestand, den niemand gezählt hat.
-  if (werte.anzahlGebinde === '' && werte.anzahlEinzeln === '') return null
-
-  const position = alsPosition(artikel, werte)
-  let text: string
+  let text: string | null
   try {
-    text = `= ${gesamtEinheiten(artikel, position.anzahlGebinde, position.anzahlEinzeln).toString().replace('.', ',')} Flaschen`
+    text = kontrolltext(artikel, werte)
   } catch {
     // Sollte nicht vorkommen — alsPosition räumt die Werte vorher auf. Eine
     // kaputte Kontrollanzeige darf die Eingabe trotzdem nicht blockieren.
-    text = ''
+    text = null
   }
+  if (text === null) return null
 
-  return <p className="mt-3 text-sm text-zinc-500 tabular-nums dark:text-zinc-400">{text}</p>
+  return <p className="text-sm text-text-muted">{text}</p>
 }
 
 /** Die Aufschrift der Weiter-Taste sagt, was sie speichert. */

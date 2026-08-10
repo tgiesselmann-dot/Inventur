@@ -61,13 +61,15 @@ async function main() {
 
     console.log(
       `\n${nurVorschau ? 'Vorschau' : 'Import'}: ` +
-        `${ergebnis.neu} neu, ${ergebnis.aktualisiert} aktualisiert, ${ergebnis.fehlerhaft} fehlerhaft` +
+        `${ergebnis.neu} neu, ${ergebnis.geaendert} geändert, ` +
+        `${ergebnis.unveraendert} unverändert, ${ergebnis.fehlerhaft} fehlerhaft` +
         (ergebnis.unvollstaendig > 0 ? `, davon ${ergebnis.unvollstaendig} ohne EK-Preis` : ''),
     )
 
     if (ergebnis.fehler.length > 0) {
       console.log('\nÜBERSPRUNGEN:')
-      for (const { zeile, meldung } of ergebnis.fehler) console.log(`  Zeile ${zeile}: ${meldung}`)
+      for (const { zeile, meldung, name } of ergebnis.fehler)
+        console.log(`  Zeile ${zeile}: ${meldung}${name ? ` (${name})` : ''}`)
     }
 
     // excel_zeile, original_excel und pruefen haben keine Zielspalte; was aus
