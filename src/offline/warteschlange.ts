@@ -18,6 +18,8 @@
 /** Ein Zählwert, wie er lokal liegt. */
 export type Eintrag = {
   zaehlungId: string
+  /** An welchem Ort dieser Wert gezählt wurde. */
+  lagerortId: string
   artikelId: string
   /** Dezimaltext mit Punkt, wie ihn die API erwartet. */
   anzahlGebinde: string
@@ -33,8 +35,20 @@ export type Eintrag = {
 /** Ein Eintrag, so wie er über die Leitung geht. */
 export type Nutzlast = Pick<
   Eintrag,
-  'artikelId' | 'anzahlGebinde' | 'anzahlEinzeln' | 'gezaehltAm'
+  'lagerortId' | 'artikelId' | 'anzahlGebinde' | 'anzahlEinzeln' | 'gezaehltAm'
 >
+
+/**
+ * Der Schlüssel eines Eintrags innerhalb einer Zählung.
+ *
+ * Ort und Artikel zusammen, nicht der Artikel allein: derselbe Artikel steht an
+ * der Theke und im Kühlcontainer und ist dort zweimal etwas anderes. Auf den
+ * Artikel allein gekeyt löschte die Theke den Kühlcontainer aus der
+ * Warteschlange — der Wert stünde lokal richtig da und käme nie beim Server an.
+ */
+export function schluessel(eintrag: Pick<Eintrag, 'lagerortId' | 'artikelId'>): string {
+  return `${eintrag.lagerortId}:${eintrag.artikelId}`
+}
 
 /** Ob dieser Eintrag noch zum Server muss. */
 export function istOffen(eintrag: Eintrag): boolean {
@@ -54,17 +68,25 @@ export type Stapel = {
  * Alles in einem Stapel, nicht ein Aufruf je Artikel: nach einem Abend im
  * Flugmodus liegen bis zu 99 Werte an, und 99 einzelne Anfragen über eine
  * gerade wiedergefundene Mobilverbindung sind 99 Gelegenheiten zu scheitern.
+ *
+ * Der Stapel nimmt alle Orte der Zählung mit, nicht nur den gerade offenen.
+ * Wer im Funkloch die Theke zählt und dann in den Kühlcontainer geht, hätte
+ * sonst Werte auf dem Gerät, die erst wieder losgingen, wenn er zufällig an die
+ * Theke zurückkehrt.
  */
 export function zuSenden(eintraege: readonly Eintrag[]): Stapel {
   const offen = eintraege.filter(istOffen)
   return {
-    nutzlast: offen.map(({ artikelId, anzahlGebinde, anzahlEinzeln, gezaehltAm }) => ({
-      artikelId,
-      anzahlGebinde,
-      anzahlEinzeln,
-      gezaehltAm,
-    })),
-    staende: new Map(offen.map((eintrag) => [eintrag.artikelId, eintrag.stand])),
+    nutzlast: offen.map(
+      ({ lagerortId, artikelId, anzahlGebinde, anzahlEinzeln, gezaehltAm }) => ({
+        lagerortId,
+        artikelId,
+        anzahlGebinde,
+        anzahlEinzeln,
+        gezaehltAm,
+      }),
+    ),
+    staende: new Map(offen.map((eintrag) => [schluessel(eintrag), eintrag.stand])),
   }
 }
 
@@ -80,7 +102,7 @@ export function nachVersand(
   bestaetigt: ReadonlyMap<string, number>,
 ): Eintrag[] {
   return eintraege.map((eintrag) => {
-    const stand = bestaetigt.get(eintrag.artikelId)
+    const stand = bestaetigt.get(schluessel(eintrag))
     if (stand === undefined) return eintrag
     // Nie einen höheren Stand bestätigen als den, der wirklich gesendet wurde.
     return { ...eintrag, gesendeterStand: Math.max(eintrag.gesendeterStand ?? -1, stand) }
@@ -93,7 +115,13 @@ export function nachVersand(
  */
 export function geaendert(
   vorher: Eintrag | undefined,
-  werte: { zaehlungId: string; artikelId: string; anzahlGebinde: string; anzahlEinzeln: string },
+  werte: {
+    zaehlungId: string
+    lagerortId: string
+    artikelId: string
+    anzahlGebinde: string
+    anzahlEinzeln: string
+  },
   jetzt: Date,
 ): Eintrag {
   return {
@@ -108,21 +136,30 @@ export function geaendert(
  * Führt die lokal liegenden Einträge mit dem Stand zusammen, den der Server
  * beim Laden der Seite mitgeschickt hat.
  *
- * Lokal gewinnt, wo lokal etwas liegt. Das Gerät ist die Quelle der Zählung —
- * ein Wert kommt hier an, bevor er den Server je sieht, und ein serverseitiger
- * Wert kann ihn nur überholen, wenn jemand anders zählt. Gleichzeitiges Zählen
- * durch mehrere Personen ist ausdrücklich nicht Teil dieser App.
+ * Lokal gewinnt, wo lokal etwas liegt — je Ort und Artikel, nicht je Artikel.
+ * Das Gerät ist die Quelle dessen, was es selbst gezählt hat: ein Wert kommt
+ * hier an, bevor er den Server je sieht.
  *
- * Der Serverstand füllt damit genau eine Lücke: das Gerät, dessen lokaler
- * Speicher weg ist (neues Handy, geleerte Website-Daten). Ohne ihn stünde eine
- * halb fertige Zählung dort wieder auf null.
+ * Zu zweit zu zählen ist ausdrücklich vorgesehen, und der Ort ist die Trennung,
+ * die es trägt. Wer an der Theke steht, fasst die Zeilen des Kühlcontainers nie
+ * an; für diese Zeilen liegt lokal nichts, und der Serverstand des anderen
+ * Geräts kommt unverändert durch. Auch nach einer Stunde ohne Netz können sich
+ * zwei Zähler so nicht überschreiben, solange jeder in seinem Lager bleibt.
+ *
+ * Öffnen zwei Geräte denselben Ort, gewinnt weiterhin, wer zuletzt sendet. Das
+ * ist ein bewusster Rest: davor warnt die Ortsliste, sperren tut sie nicht — im
+ * Lager ist ein ausgesperrter Zähler schlimmer als ein doppelt gezähltes Fach.
+ *
+ * Der Serverstand füllt ausserdem die Lücke des Geräts, dessen lokaler Speicher
+ * weg ist (neues Handy, geleerte Website-Daten). Ohne ihn stünde eine halb
+ * fertige Zählung dort wieder auf null.
  */
 export function zusammenfuehren(
   lokal: readonly Eintrag[],
   vomServer: readonly Eintrag[],
 ): Eintrag[] {
-  const zusammen = new Map(vomServer.map((eintrag) => [eintrag.artikelId, eintrag]))
-  for (const eintrag of lokal) zusammen.set(eintrag.artikelId, eintrag)
+  const zusammen = new Map(vomServer.map((eintrag) => [schluessel(eintrag), eintrag]))
+  for (const eintrag of lokal) zusammen.set(schluessel(eintrag), eintrag)
   return [...zusammen.values()]
 }
 
@@ -133,6 +170,7 @@ export function zusammenfuehren(
  */
 export function vomServer(werte: {
   zaehlungId: string
+  lagerortId: string
   artikelId: string
   anzahlGebinde: string
   anzahlEinzeln: string

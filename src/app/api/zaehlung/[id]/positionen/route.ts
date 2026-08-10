@@ -6,12 +6,19 @@
  * eine gerade wiedergefundene Mobilverbindung wären 99 Gelegenheiten, auf
  * halber Strecke liegenzubleiben.
  *
- * Idempotent über die Unique-Constraint (zaehlungId, artikelId). Ein Stapel,
- * der wegen eines Verbindungsabbruchs zweimal ankommt, hinterlässt denselben
- * Stand — der Client darf beliebig oft wiederholen.
+ * Idempotent über die Unique-Constraint (zaehlungId, lagerortId, artikelId).
+ * Ein Stapel, der wegen eines Verbindungsabbruchs zweimal ankommt, hinterlässt
+ * denselben Stand — der Client darf beliebig oft wiederholen.
+ *
+ * Ein Stapel darf mehrere Lagerorte auf einmal tragen. Das Gerät sendet alles,
+ * was noch offen ist, und nicht nur den Ort, an dem gerade gezählt wird: sonst
+ * bliebe der Wert von der Theke liegen, sobald jemand in den Kühlcontainer
+ * weitergeht.
  *
  * `betriebId` kommt aus der Zählung, nie aus dem Request. Ein Client, der eine
- * fremde betriebId mitschickt, soll damit nichts erreichen können.
+ * fremde betriebId mitschickt, soll damit nichts erreichen können. Für den
+ * Lagerort gilt dasselbe: er wird gegen die Orte des Betriebs geprüft, sonst
+ * liesse sich ein Zählwert in ein fremdes Lager schreiben.
  */
 
 import type { NextRequest } from 'next/server'
@@ -22,6 +29,7 @@ import { EinheitenFehler, gesamtEinheiten } from '@/lib/einheiten'
 import { prisma } from '@/lib/prisma'
 
 type Position = {
+  lagerortId: string
   artikelId: string
   anzahlGebinde: string
   anzahlEinzeln: string
@@ -40,12 +48,15 @@ function lesePositionen(rumpf: unknown): Position[] {
     if (typeof eintrag !== 'object' || eintrag === null) {
       throw new Error(`Position ${index} ist kein Objekt`)
     }
-    const { artikelId, anzahlGebinde, anzahlEinzeln, gezaehltAm } = eintrag as Record<
+    const { lagerortId, artikelId, anzahlGebinde, anzahlEinzeln, gezaehltAm } = eintrag as Record<
       string,
       unknown
     >
     if (typeof artikelId !== 'string' || artikelId === '') {
       throw new Error(`Position ${index} ohne artikelId`)
+    }
+    if (typeof lagerortId !== 'string' || lagerortId === '') {
+      throw new Error(`Position ${index} (${artikelId}) ohne lagerortId`)
     }
     if (typeof anzahlGebinde !== 'string' || typeof anzahlEinzeln !== 'string') {
       throw new Error(`Position ${index} (${artikelId}): Mengen müssen Text sein`)
@@ -56,7 +67,7 @@ function lesePositionen(rumpf: unknown): Position[] {
     if (typeof gezaehltAm !== 'string' || Number.isNaN(Date.parse(gezaehltAm))) {
       throw new Error(`Position ${index} (${artikelId}): gezaehltAm ist kein Zeitpunkt`)
     }
-    return { artikelId, anzahlGebinde, anzahlEinzeln, gezaehltAm }
+    return { lagerortId, artikelId, anzahlGebinde, anzahlEinzeln, gezaehltAm }
   })
 }
 
@@ -97,11 +108,20 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/zaehlun
   // Ohne `select`, damit der Feldname der Gebindegrösse in dieser Datei nicht
   // vorkommt — die Umrechnung gehört nach src/lib/einheiten.ts und der Wächter
   // in tests/einheiten.test.ts prüft das über den blossen Namen.
-  const artikel = await prisma.artikel.findMany({
-    where: { betriebId: zaehlung.betriebId, id: { in: positionen.map((p) => p.artikelId) } },
-    omit: { ekPreisCent: true, ekPreisBezug: true },
-  })
+  const [artikel, lagerorte] = await Promise.all([
+    prisma.artikel.findMany({
+      where: { betriebId: zaehlung.betriebId, id: { in: positionen.map((p) => p.artikelId) } },
+      omit: { ekPreisCent: true, ekPreisBezug: true },
+    }),
+    // Auch stillgelegte Orte: wer mitten in der Zählung ein Lager stilllegt,
+    // soll die Werte, die schon auf dem Gerät liegen, nicht verlieren.
+    prisma.lagerort.findMany({
+      where: { betriebId: zaehlung.betriebId, id: { in: positionen.map((p) => p.lagerortId) } },
+      select: { id: true },
+    }),
+  ])
   const bekannt = new Map(artikel.map((eintrag) => [eintrag.id, eintrag]))
+  const bekannteOrte = new Set(lagerorte.map((ort) => ort.id))
 
   // Erst alles prüfen, dann alles schreiben. Ein halb angenommener Stapel
   // wäre für den Client nicht von einem ganz abgelehnten zu unterscheiden.
@@ -110,6 +130,12 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/zaehlun
     if (eintrag === undefined) {
       return Response.json(
         { fehler: `Artikel ${position.artikelId} gehört nicht zu diesem Betrieb` },
+        { status: 400 },
+      )
+    }
+    if (!bekannteOrte.has(position.lagerortId)) {
+      return Response.json(
+        { fehler: `Lager ${position.lagerortId} gehört nicht zu diesem Betrieb` },
         { status: 400 },
       )
     }
@@ -129,11 +155,31 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/zaehlun
     }
   }
 
-  await prisma.$transaction(
-    positionen.map((position) =>
+  // Der erste Wert eines Ortes eröffnet dessen Abschnitt. Er trägt die
+  // Fertigmeldung und die Auskunft, wer dort zählt — ohne ihn liesse sich
+  // "noch nicht angefangen" nicht von "durch und nichts gefunden" trennen.
+  // `skipDuplicates`, weil jeder weitere Wert desselben Ortes hier erneut
+  // vorbeikommt und den Abschnitt nicht neu eröffnen darf.
+  const orteImStapel = [...new Set(positionen.map((position) => position.lagerortId))]
+
+  await prisma.$transaction([
+    prisma.zaehlabschnitt.createMany({
+      data: orteImStapel.map((lagerortId) => ({
+        betriebId: zaehlung.betriebId,
+        zaehlungId: id,
+        lagerortId,
+        begonnenVonId: benutzer.benutzerId,
+      })),
+      skipDuplicates: true,
+    }),
+    ...positionen.map((position) =>
       prisma.zaehlposition.upsert({
         where: {
-          zaehlungId_artikelId: { zaehlungId: id, artikelId: position.artikelId },
+          zaehlungId_lagerortId_artikelId: {
+            zaehlungId: id,
+            lagerortId: position.lagerortId,
+            artikelId: position.artikelId,
+          },
         },
         update: {
           anzahlGebinde: position.anzahlGebinde,
@@ -143,6 +189,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/zaehlun
         create: {
           betriebId: zaehlung.betriebId,
           zaehlungId: id,
+          lagerortId: position.lagerortId,
           artikelId: position.artikelId,
           anzahlGebinde: position.anzahlGebinde,
           anzahlEinzeln: position.anzahlEinzeln,
@@ -150,7 +197,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/zaehlun
         },
       }),
     ),
-  )
+  ])
 
   return Response.json({ gespeichert: positionen.map((position) => position.artikelId) })
 }

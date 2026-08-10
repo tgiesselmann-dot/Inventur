@@ -23,6 +23,7 @@ import {
   geaendert,
   nachVersand,
   sammelStatus,
+  schluessel,
   zusammenfuehren,
   zuSenden,
   type Ablehnungsgrund,
@@ -46,14 +47,20 @@ const VERSUCH_ALLE_MS = 15_000
 const RUHE_VOR_VERSAND_MS = 1_500
 
 export type Zaehlstand = {
-  /** Die aktuellen Werte je Artikel-Id. */
+  /**
+   * Die aktuellen Werte des offenen Lagerorts, je Artikel-Id.
+   *
+   * Nur dieser Ort: die Maske zählt immer in genau einem Lager, und dort ist
+   * der Artikel wieder eindeutig. Was an den anderen Orten liegt, geht in den
+   * Versand ein, aber nicht in diese Anzeige.
+   */
   eintraege: ReadonlyMap<string, Eintrag>
-  /** Die Artikel-Ids, zu denen ein Wert vorliegt. */
+  /** Die Artikel-Ids, zu denen an diesem Ort ein Wert vorliegt. */
   erfasst: ReadonlySet<string>
   status: Sammelstatus
   /** true, bis der lokale Speicher gelesen ist. */
   laedt: boolean
-  /** Übernimmt einen gezählten Wert. */
+  /** Übernimmt einen gezählten Wert für den offenen Lagerort. */
   setzen: (artikelId: string, werte: { anzahlGebinde: string; anzahlEinzeln: string }) => void
   /** Stösst einen Versand an, etwa vor dem Abschluss. */
   senden: () => Promise<void>
@@ -103,12 +110,22 @@ export function useSyncstatus(zaehlungId: string): Sammelstatus | null {
   return sammelStatus(eintraege, offline)
 }
 
+/**
+ * Der Stand einer Zählung, aus der Sicht eines Lagerorts.
+ *
+ * Gehalten wird immer die ganze Zählung — alle Orte. Nur so geht ein Wert, der
+ * im Funkloch an der Theke entstand, auch dann noch hinaus, wenn der Zähler
+ * längst im Kühlcontainer steht. Nach aussen zeigt der Stand dagegen nur den
+ * offenen Ort: dort steht der Daumen, und dort ist der Artikel eindeutig.
+ */
 export function useZaehlstand(
   zaehlungId: string,
+  lagerortId: string,
   artikel: readonly ZaehlArtikel[],
   serverEintraege: readonly Eintrag[],
   kopf: { datum: string; status: string },
 ): Zaehlstand {
+  /** Alle Orte der Zählung, gekeyt über `schluessel`. */
   const [eintraege, setEintraege] = useState<ReadonlyMap<string, Eintrag>>(new Map())
   const [laedt, setLaedt] = useState(true)
 
@@ -166,7 +183,7 @@ export function useZaehlstand(
 
       anwenden(
         new Map(
-          zusammenfuehren(lokal, serverEintraege).map((eintrag) => [eintrag.artikelId, eintrag]),
+          zusammenfuehren(lokal, serverEintraege).map((eintrag) => [schluessel(eintrag), eintrag]),
         ),
       )
       setLaedt(false)
@@ -195,21 +212,26 @@ export function useZaehlstand(
 
   const setzen = useCallback(
     (artikelId: string, werte: { anzahlGebinde: string; anzahlEinzeln: string }) => {
+      const kennung = schluessel({ lagerortId, artikelId })
       const neu = new Map(standRef.current)
       neu.set(
-        artikelId,
-        geaendert(neu.get(artikelId), { zaehlungId, artikelId, ...werte }, new Date()),
+        kennung,
+        geaendert(
+          neu.get(kennung),
+          { zaehlungId, lagerortId, artikelId, ...werte },
+          new Date(),
+        ),
       )
       anwenden(neu)
 
-      const eintrag = neu.get(artikelId)
+      const eintrag = neu.get(kennung)
       if (eintrag !== undefined) {
         void eintraegeSchreiben([eintrag]).catch((ursache) => {
           console.warn('Wert konnte nicht lokal gespeichert werden', ursache)
         })
       }
     },
-    [anwenden, zaehlungId],
+    [anwenden, lagerortId, zaehlungId],
   )
 
   const senden = useCallback(async () => {
@@ -234,7 +256,7 @@ export function useZaehlstand(
       }
 
       const aktualisiert = nachVersand([...standRef.current.values()], stapel.staende)
-      anwenden(new Map(aktualisiert.map((eintrag) => [eintrag.artikelId, eintrag])))
+      anwenden(new Map(aktualisiert.map((eintrag) => [schluessel(eintrag), eintrag])))
       await eintraegeSchreiben(aktualisiert)
       setVersandFehlt(false)
       setAbgelehnt(null)
@@ -276,9 +298,19 @@ export function useZaehlstand(
     return () => clearTimeout(wartend)
   }, [laedt, senden, eintraege])
 
+  // Der Ausschnitt für die Maske: nur der offene Ort, wieder je Artikel-Id.
+  // Der Status dagegen zählt über alle Orte — ein Wert, der an der Theke
+  // liegengeblieben ist, ist auch im Kühlcontainer noch nicht gespeichert, und
+  // die Zeile oben soll das sagen.
+  const meineEintraege = new Map(
+    [...eintraege.values()]
+      .filter((eintrag) => eintrag.lagerortId === lagerortId)
+      .map((eintrag) => [eintrag.artikelId, eintrag]),
+  )
+
   return {
-    eintraege,
-    erfasst: new Set(eintraege.keys()),
+    eintraege: meineEintraege,
+    erfasst: new Set(meineEintraege.keys()),
     status: sammelStatus([...eintraege.values()], offline || versandFehlt, abgelehnt),
     laedt,
     setzen,

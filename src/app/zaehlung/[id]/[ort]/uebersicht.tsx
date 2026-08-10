@@ -1,12 +1,19 @@
 'use client'
 
 /**
- * Die Liste aller Artikel: der Ausweg aus der Fokusansicht.
+ * Die Liste der Artikel dieses Lagers: der Ausweg aus der Fokusansicht.
  *
  * Sie beantwortet drei Fragen, die die Fokusansicht nicht beantworten kann: Was
  * fehlt noch? Was habe ich bei Artikel 60 eingetragen? Und: wie komme ich
  * dorthin zurück, ohne sechzig Mal "weiter" zu tippen. Jede Zeile ist antippbar
  * und 56px hoch.
+ *
+ * Ganz unten steht „Weitere Artikel" — der Rest des Stamms, der hier sonst
+ * nicht steht. Antippen holt einen davon in dieses Lager und führt sofort zu
+ * seiner Eingabe. Das ist der Weg für die Kiste, die heute ausnahmsweise hinten
+ * steht; ab der nächsten Zählung ist sie von allein dabei, weil sie dann hier
+ * einen Wert hat. Der Block ist zugeklappt: er ist die Ausnahme und darf die
+ * Liste dessen, was wirklich hier steht, nicht zuschütten.
  *
  * Die Kategorien erscheinen als Abschnitte in der Reihenfolge des Laufwegs, und
  * dieselbe Kategorie taucht dabei mehrfach auf, wenn der Weg mehrfach an ihr
@@ -33,63 +40,60 @@ import { Wegflaeche } from '@/ui/wegflaeche'
 
 type Props = {
   artikel: ZaehlArtikel[]
+  /** Der übrige Stamm — was an diesem Ort nicht erwartet wird. */
+  weitere: ZaehlArtikel[]
+  lagerortName: string
   eintraege: ReadonlyMap<string, Eintrag>
   erfasst: ReadonlySet<string>
   offen: ZaehlArtikel[]
-  /** Was der Server beim letzten Abschlussversuch vermisst hat. null: kein Versuch. */
-  fehlendNachAbschluss: ZaehlArtikel[] | null
+  /** true, wenn die Fertigmeldung nicht durchkam. */
+  meldungFehlt: boolean
   alleErfasst: boolean
   abgeschlossen: boolean
-  /** Wohin die abgeschlossene Zählung zurückführt: ihr Ergebnis. */
-  ergebnisZiel: string
-  schliesst: boolean
+  /** Wohin es zurückgeht: die Ortswahl dieser Zählung. */
+  ortswahlZiel: string
+  meldet: boolean
   aufArtikel: (index: number) => void
-  aufAbschluss: () => void
+  aufAufnehmen: (artikelId: string) => void
+  aufFertigmeldung: () => void
 }
 
 export function Uebersicht({
   artikel,
+  weitere,
+  lagerortName,
   eintraege,
   erfasst,
   offen,
-  fehlendNachAbschluss,
+  meldungFehlt,
   alleErfasst,
   abgeschlossen,
-  ergebnisZiel,
-  schliesst,
+  ortswahlZiel,
+  meldet,
   aufArtikel,
-  aufAbschluss,
+  aufAufnehmen,
+  aufFertigmeldung,
 }: Props) {
   const blocks = abschnitte(artikel)
-  const vermisst = new Set((fehlendNachAbschluss ?? []).map((eintrag) => eintrag.id))
 
   return (
     <>
       <div className="flex-1 overflow-y-auto bg-bg">
-        {fehlendNachAbschluss !== null && fehlendNachAbschluss.length > 0 && (
+        {meldungFehlt && (
           <div className="p-2">
-            <Hinweisleiste
-              rolle="attention"
-              titel={`Der Abschluss ist noch nicht möglich: ${fehlendNachAbschluss.length} Artikel ohne Wert.`}
-            >
-              Sie sind unten hervorgehoben.
-            </Hinweisleiste>
-          </div>
-        )}
-        {fehlendNachAbschluss !== null && fehlendNachAbschluss.length === 0 && (
-          <div className="p-2">
-            <Hinweisleiste rolle="attention" titel="Der Abschluss hat nicht geklappt.">
-              Sobald wieder Netz da ist, erneut versuchen.
+            <Hinweisleiste rolle="attention" titel="Die Fertigmeldung hat nicht geklappt.">
+              Sobald wieder Netz da ist, erneut versuchen. Die gezählten Werte liegen im Gerät und
+              gehen nicht verloren.
             </Hinweisleiste>
           </div>
         )}
 
         <p className="border-b border-border px-4 py-3 text-sm text-text-muted">
           {offen.length === 0
-            ? `Alle ${artikel.length} Artikel gezählt`
+            ? `${lagerortName}: alle ${artikel.length} Artikel gezählt`
             : offen.length === 1
-              ? '1 Artikel fehlt noch'
-              : `${offen.length} Artikel fehlen noch`}
+              ? `${lagerortName}: 1 Artikel ohne Wert`
+              : `${lagerortName}: ${offen.length} Artikel ohne Wert`}
         </p>
 
         {blocks.map((block, station) => {
@@ -108,7 +112,7 @@ export function Uebersicht({
                     artikel={eintrag}
                     eintrag={eintraege.get(eintrag.id)}
                     gezaehlt={erfasst.has(eintrag.id)}
-                    vermisst={vermisst.has(eintrag.id)}
+                    vermisst={false}
                     aufKlick={abgeschlossen ? undefined : () => aufArtikel(block.ab + versatz)}
                   />
                 ))}
@@ -116,28 +120,61 @@ export function Uebersicht({
             </section>
           )
         })}
+
+        {/* Der übrige Stamm, zugeklappt. Ein <details> und kein eigener
+            Zustand: das Aufklappen überlebt so den Wechsel in die Fokusansicht
+            nicht, und genau das ist richtig — wer einen Artikel dazugeholt hat,
+            findet ihn danach oben in seiner Kategorie wieder. */}
+        {!abgeschlossen && weitere.length > 0 && (
+          <details className="border-t border-border">
+            <summary className="flex h-tap cursor-pointer items-center px-4 text-zeile text-text-muted marker:content-none">
+              Weitere Artikel ({weitere.length})
+            </summary>
+            <p className="px-4 pb-2 text-sm text-text-muted">
+              Steht heute ausnahmsweise etwas hier, das sonst woanders liegt? Antippen nimmt es in
+              dieses Lager auf.
+            </p>
+            <ul className="flex flex-col gap-tapgap p-2">
+              {weitere.map((eintrag) => (
+                <li key={eintrag.id}>
+                  <button
+                    type="button"
+                    onClick={() => aufAufnehmen(eintrag.id)}
+                    className="tap focus-visible:fokus flex h-tap w-full items-center gap-3.5 rounded-ctl border border-border bg-surface px-4 text-left"
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate text-zeile text-text">{eintrag.name}</span>
+                      <span className="truncate text-sm text-text-muted">
+                        {eintrag.lieferGebindeText}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm text-text-muted">aufnehmen</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
 
       {!abgeschlossen && (
         <Maskenfuss>
-          {/* Die Aufschrift trägt den Grund der Sperre, nicht nur die Sperre:
-              "Noch 12 zu zählen" beantwortet die Frage, die ein graues Feld
-              sonst offen lässt. */}
-          <Schaltflaeche
-            breit
-            rolle="confirm"
-            onClick={aufAbschluss}
-            disabled={!alleErfasst || schliesst}
-          >
-            {schliesst ? (
+          {/* Nicht gesperrt, auch wenn Artikel ohne Wert bleiben: an der Theke
+              stehen vierzig der neunundneunzig Artikel, und für die übrigen
+              eine Null zu tippen wäre keine Zählung. Die Aufschrift sagt
+              trotzdem, was offen bleibt — wer hier zu früh tippt, hat es
+              gelesen. Dass am Ende kein Artikel *nirgends* gezählt ist, prüft
+              der Abschluss der ganzen Zählung. */}
+          <Schaltflaeche breit rolle="confirm" onClick={aufFertigmeldung} disabled={meldet}>
+            {meldet ? (
               <span className="flex items-center gap-2.5">
                 <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-confirm" />
-                Wird abgeschlossen…
+                Wird gemeldet…
               </span>
             ) : alleErfasst ? (
-              'Zählung abschliessen'
+              `${lagerortName} fertig melden`
             ) : (
-              `Noch ${offen.length} zu zählen`
+              `${lagerortName} fertig melden · ${offen.length} ohne Wert`
             )}
           </Schaltflaeche>
         </Maskenfuss>
@@ -147,11 +184,11 @@ export function Uebersicht({
           <p className="px-2 py-1.5 text-sm text-text-muted">
             Diese Zählung ist abgeschlossen — die Werte stehen fest.
           </p>
-          {/* Der Weg zurück auf das Ergebnis. Von dort führt „Werte ansehen"
-              hierher; ohne diese Fläche wäre der Rückweg der Zurück-Knopf des
-              Browsers, und wer über die Liste hereinkam, hat keinen. */}
-          <Wegflaeche href={ergebnisZiel} art="sekundaer" breit>
-            Zum Ergebnis
+          {/* Der Weg zurück in die Ortswahl. Ohne diese Fläche wäre der Rückweg
+              der Zurück-Knopf des Browsers, und wer über die Liste hereinkam,
+              hat keinen. */}
+          <Wegflaeche href={ortswahlZiel} art="sekundaer" breit>
+            Zu den Lagern
           </Wegflaeche>
         </Maskenfuss>
       )}

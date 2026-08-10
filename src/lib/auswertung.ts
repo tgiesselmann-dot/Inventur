@@ -29,7 +29,7 @@
 
 import { Decimal } from '@prisma/client/runtime/client'
 
-import { wertCent, type BepreisterArtikel } from '@/lib/einheiten'
+import { gesamtEinheiten, wertCent, type BepreisterArtikel } from '@/lib/einheiten'
 import { alsEuro } from '@/lib/wareneingang'
 
 /** Die Felder eines Artikels, die die Auswertung braucht. */
@@ -116,6 +116,42 @@ function wertDerDifferenz(artikel: AuswertungsArtikel, menge: Decimal): number |
   const betrag = wertCent(artikel, menge.abs())
   if (betrag === null) return null
   return menge.isNegative() ? -betrag : betrag
+}
+
+/**
+ * Eine gezählte Zeile, so wie sie aus der Datenbank kommt — Ort für Ort.
+ *
+ * Der Artikeltyp kommt von der Umrechnungsfunktion selbst und wird hier nicht
+ * nachgebaut: was `gesamtEinheiten` an Feldern braucht, entscheidet
+ * src/lib/einheiten.ts.
+ */
+export type Gezaehlt = {
+  artikelId: string
+  anzahlGebinde: Decimal
+  anzahlEinzeln: Decimal
+  artikel: Parameters<typeof gesamtEinheiten>[0]
+}
+
+/**
+ * Fasst die Zählwerte aller Lager zu einem Bestand je Artikel zusammen.
+ *
+ * Seit es Lagerorte gibt, steht derselbe Artikel mehrfach in einer Zählung —
+ * einmal je Ort. Sein Bestand ist deren Summe; einen Bestand je Lager gibt es
+ * nicht. Wer diese Zusammenfassung vergisst, bekommt denselben Artikel mehrfach
+ * in der Auswertung, jedes Mal mit einem Teilbestand.
+ *
+ * Umgerechnet wird je Position und erst dann addiert. Die Rohmengen zweier Orte
+ * zusammenzuzählen ergäbe zwar dieselbe Zahl, aber unterwegs ein
+ * Gebinde-plus-Rest-Paar, das es an keinem der beiden Orte gab — und das wäre
+ * eine Menge, die niemand gezählt hat.
+ */
+export function einheitenJeArtikel(positionen: readonly Gezaehlt[]): Map<string, Decimal> {
+  const summen = new Map<string, Decimal>()
+  for (const position of positionen) {
+    const menge = gesamtEinheiten(position.artikel, position.anzahlGebinde, position.anzahlEinzeln)
+    summen.set(position.artikelId, (summen.get(position.artikelId) ?? new Decimal(0)).plus(menge))
+  }
+  return summen
 }
 
 /**

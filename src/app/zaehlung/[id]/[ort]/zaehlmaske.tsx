@@ -10,6 +10,13 @@
  * derselben Stelle — der Zähler muss nicht zielen und kann auf die Kiste
  * schauen statt auf das Handy.
  *
+ * Gezählt wird immer in genau einem Lager. Die Maske führt deshalb nicht durch
+ * den ganzen Artikelstamm, sondern durch das, was an diesem Ort erwartet wird —
+ * die Artikel, die dort bei der letzten Zählung standen. Was heute
+ * ausnahmsweise dort steht, holt man sich in der Liste unter „Weitere Artikel"
+ * dazu; ab der nächsten Zählung ist es von allein dabei. Beim allerersten Mal
+ * gibt es keine Erfahrung, dann führt sie durch den ganzen Stamm.
+ *
  * Der Weg durch die Artikel folgt `sortierung`, dem Laufweg im Lager. Die
  * Übersicht ist der Ausweg daraus: springen, überspringen, Lücken finden.
  *
@@ -17,11 +24,16 @@
  * gespeichert), dann "weiter". Wer an einem leeren Fach nichts eingibt,
  * bestätigt mit "weiter" die Null — die Taste sagt vorher, was sie speichert.
  *
+ * Am Ende steht die Fertigmeldung dieses Lagers, nicht der Abschluss der
+ * Zählung. Abgeschlossen wird erst, wenn alle Lager gemeldet sind, und das
+ * geschieht eine Ebene höher in der Ortswahl — ein Lager, das niemand angefasst
+ * hat, sieht in der Schwundrechnung sonst aus wie verschwundene Ware.
+ *
  * Alles Auslösende liegt im unteren Drittel, mit genau einer Ausnahme: "Liste"
  * im Kopf, bewusst weit weg vom Daumen, damit sie nicht versehentlich getroffen
  * wird und die Fokusansicht wegspringt. Alles darüber ist Anzeige — die
  * Wertkacheln ebenso wie der grüne Balken über dem Block. Zwischen den beiden
- * Kacheln wechselt die Wechseltaste im Ziffernblock, abgeschlossen wird in der
+ * Kacheln wechselt die Wechseltaste im Ziffernblock, gemeldet wird in der
  * Liste, wo die Schaltfläche im Fuss steht.
  */
 
@@ -61,18 +73,82 @@ import { Uebersicht } from './uebersicht'
 
 const LEER: Zaehleingabe = { anzahlGebinde: '', anzahlEinzeln: '' }
 
+/**
+ * Die Artikel, durch die dieses Lager führt.
+ *
+ * Steht als Funktion neben der Komponente, weil sie an zwei Stellen gebraucht
+ * wird: für die Anzeige und für den Sprung auf einen gerade dazugeholten
+ * Artikel, dessen Index sich auf die künftige Liste bezieht.
+ *
+ * Ohne Erwartung — die erste Zählung an diesem Ort — führt sie durch den ganzen
+ * Stamm. Etwas anderes wäre geraten.
+ */
+function ortsliste(
+  artikel: readonly ZaehlArtikel[],
+  erwartet: ReadonlySet<string>,
+  zusaetzlich: ReadonlySet<string>,
+): ZaehlArtikel[] {
+  const meine =
+    erwartet.size === 0
+      ? [...artikel]
+      : artikel.filter((eintrag) => erwartet.has(eintrag.id) || zusaetzlich.has(eintrag.id))
+  return inZaehlreihenfolge(meine)
+}
+
 type Props = {
   zaehlungId: string
+  lagerortId: string
+  lagerortName: string
   datum: string
   status: ZaehlungStatus
   artikel: ZaehlArtikel[]
+  /**
+   * Die Artikel, die an diesem Ort erwartet werden — aus der letzten
+   * abgeschlossenen Zählung. Leer beim ersten Mal; dann führt die Maske durch
+   * den ganzen Stamm, weil es keine Erfahrung gibt, auf die sie sich stützen
+   * könnte.
+   */
+  erwarteteArtikel: string[]
   serverEintraege: Eintrag[]
 }
 
-export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege }: Props) {
+export function Zaehlmaske({
+  zaehlungId,
+  lagerortId,
+  lagerortName,
+  datum,
+  status,
+  artikel,
+  erwarteteArtikel,
+  serverEintraege,
+}: Props) {
   const router = useRouter()
-  const liste = useMemo(() => inZaehlreihenfolge(artikel), [artikel])
-  const stand = useZaehlstand(zaehlungId, liste, serverEintraege, { datum, status })
+
+  /**
+   * Was heute ausnahmsweise hier steht — in der Liste dazugeholt.
+   *
+   * Nur für diese Sitzung: einen Wert bekommt der Artikel erst, wenn jemand
+   * ihn zählt, und dann ist er ab der nächsten Zählung von allein erwartet.
+   * Eine gepflegte Zuordnung wäre ein zweiter Stammdatensatz neben der
+   * Wirklichkeit.
+   */
+  const [zusaetzlich, setZusaetzlich] = useState<ReadonlySet<string>>(new Set())
+
+  const erwartet = useMemo(() => new Set(erwarteteArtikel), [erwarteteArtikel])
+
+  /** Die Artikel dieses Ortes: erwartete plus dazugeholte. */
+  const liste = useMemo(
+    () => ortsliste(artikel, erwartet, zusaetzlich),
+    [artikel, erwartet, zusaetzlich],
+  )
+
+  /** Der Rest des Stamms — erreichbar über die Liste, nicht über „weiter". */
+  const weitere = useMemo(() => {
+    const meine = new Set(liste.map((eintrag) => eintrag.id))
+    return inZaehlreihenfolge(artikel.filter((eintrag) => !meine.has(eintrag.id)))
+  }, [artikel, liste])
+
+  const stand = useZaehlstand(zaehlungId, lagerortId, liste, serverEintraege, { datum, status })
 
   const abgeschlossen = status === ZaehlungStatus.ABGESCHLOSSEN
 
@@ -86,8 +162,9 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
   const [aktivesFeld, setAktivesFeld] = useState<Feldname | null>(null)
   /** Was gerade getippt wurde. null heisst: es gilt der gespeicherte Wert. */
   const [entwurf, setEntwurf] = useState<Zaehleingabe | null>(null)
-  const [abschlussFehlt, setAbschlussFehlt] = useState<ZaehlArtikel[] | null>(null)
-  const [schliesst, setSchliesst] = useState(false)
+  /** true, wenn die Fertigmeldung nicht durchkam. */
+  const [meldungFehlt, setMeldungFehlt] = useState(false)
+  const [meldet, setMeldet] = useState(false)
 
   const aktuell = liste[index]
   const meineFelder = useMemo(() => (aktuell ? felder(aktuell) : []), [aktuell])
@@ -124,6 +201,29 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
     setAktivesFeld(null)
     setAnsicht('fokus')
   }, [])
+
+  /**
+   * Holt einen Artikel aus dem übrigen Stamm in dieses Lager.
+   *
+   * Er wandert damit in die Zählreihenfolge und wird sofort zum Artikel der
+   * Fokusansicht — wer ihn dazuholt, will ihn zählen und nicht erst suchen.
+   * Die künftige Liste wird dafür hier ausgerechnet und nicht abgewartet: der
+   * neue Index bezieht sich auf sie, nicht auf die, die gerade noch steht.
+   */
+  const aufnehmen = useCallback(
+    (artikelId: string) => {
+      const neu = new Set(zusaetzlich).add(artikelId)
+      setZusaetzlich(neu)
+      const ziel = ortsliste(artikel, erwartet, neu).findIndex(
+        (eintrag) => eintrag.id === artikelId,
+      )
+      if (ziel >= 0) setIndex(ziel)
+      setEntwurf(null)
+      setAktivesFeld(null)
+      setAnsicht('fokus')
+    },
+    [artikel, erwartet, zusaetzlich],
+  )
 
   if (aktuell === undefined || feld === undefined) {
     return <p className="p-6">Diese Zählung hat keine aktiven Artikel.</p>
@@ -167,36 +267,40 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
     else gehZu(ziel)
   }
 
-  async function beiAbschluss() {
-    setSchliesst(true)
-    setAbschlussFehlt(null)
+  /**
+   * Meldet dieses Lager fertig und führt zurück in die Ortswahl.
+   *
+   * Die Meldung ist bewusst nicht daran gebunden, dass jeder Artikel der Liste
+   * einen Wert hat: an der Theke stehen vierzig der neunundneunzig Artikel, und
+   * für die übrigen neunundfünfzig eine Null zu tippen wäre keine Zählung,
+   * sondern eine Beschäftigung. Dass am Ende kein Artikel *nirgends* gezählt
+   * ist, prüft der Abschluss der ganzen Zählung.
+   */
+  async function beiFertigmeldung() {
+    setMeldet(true)
+    setMeldungFehlt(false)
     try {
-      // Erst alles Ausstehende loswerden, sonst meldet der Server Lücken, die
-      // in Wirklichkeit noch auf dem Gerät liegen.
+      // Erst alles Ausstehende loswerden: ein Lager als fertig zu melden,
+      // während seine Werte noch auf dem Gerät liegen, wäre eine Zusage, die
+      // der Server nicht einlösen kann.
       await stand.senden()
-      const antwort = await fetch(`/api/zaehlung/${zaehlungId}/abschluss`, { method: 'POST' })
-      const ergebnis = (await antwort.json()) as { fehlend?: { id: string }[] }
+      const antwort = await fetch(`/api/zaehlung/${zaehlungId}/lager/${lagerortId}/fertig`, {
+        method: 'POST',
+      })
 
       if (antwort.ok) {
-        // Weiter auf das Ergebnis und nicht zurück in die Maske: der Abschluss
-        // endet nicht mit einer Meldung, sondern mit einem Bildschirm, der
-        // sagt, was gezählt wurde.
-        router.push(`/zaehlung/${zaehlungId}/abschluss`)
+        // Zurück in die Ortswahl statt in die Liste: der nächste Griff gilt dem
+        // nächsten Lager, und dort steht auch, was noch offen ist.
+        router.push(`/zaehlung/${zaehlungId}`)
         return
       }
-      if (antwort.status === 409) {
-        const fehlendeIds = new Set((ergebnis.fehlend ?? []).map((eintrag) => eintrag.id))
-        setAbschlussFehlt(liste.filter((eintrag) => fehlendeIds.has(eintrag.id)))
-        setAnsicht('uebersicht')
-        return
-      }
-      setAbschlussFehlt([])
+      setMeldungFehlt(true)
     } catch {
-      // Ohne Netz lässt sich nicht abschliessen. Der Status oben sagt bereits,
-      // dass noch Werte unterwegs sind.
-      setAbschlussFehlt([])
+      // Ohne Netz lässt sich nichts melden. Der Status oben sagt bereits, dass
+      // Werte unterwegs sind.
+      setMeldungFehlt(true)
     } finally {
-      setSchliesst(false)
+      setMeldet(false)
     }
   }
 
@@ -206,8 +310,14 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
     <Vollbild>
       <header className="flex shrink-0 items-center gap-3.5 bg-surface px-4 pt-2 pb-3.5">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {/* Der Ortsname steht dauerhaft im Kopf, nicht die Kategorie: beim
+              Zählen zu zweit ist „in welchem Lager bin ich" die Frage, deren
+              falsche Antwort eine ganze Zählung verdirbt. Die Kategorie steht
+              als Abschnitt in der Liste. */}
           <p className="truncate text-zeile">
-            {abgeschlossen ? `Zählung vom ${alsDatumstext(new Date(datum))}` : aktuell.kategorie}
+            {abgeschlossen
+              ? `${lagerortName} · ${alsDatumstext(new Date(datum))}`
+              : lagerortName}
           </p>
           {/* Abgeschlossen gibt es keine Warteschlange mehr, deren Stand hier
               stehen könnte — der Fuss der Liste sagt stattdessen, dass die
@@ -246,16 +356,19 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
       {ansicht === 'uebersicht' ? (
         <Uebersicht
           artikel={liste}
+          weitere={weitere}
+          lagerortName={lagerortName}
           eintraege={stand.eintraege}
           erfasst={stand.erfasst}
           offen={offen}
-          fehlendNachAbschluss={abschlussFehlt}
+          meldungFehlt={meldungFehlt}
           alleErfasst={alleErfasst}
           abgeschlossen={abgeschlossen}
-          ergebnisZiel={`/zaehlung/${zaehlungId}/abschluss`}
-          schliesst={schliesst}
+          ortswahlZiel={`/zaehlung/${zaehlungId}`}
+          meldet={meldet}
           aufArtikel={gehZu}
-          aufAbschluss={() => void beiAbschluss()}
+          aufAufnehmen={aufnehmen}
+          aufFertigmeldung={() => void beiFertigmeldung()}
         />
       ) : (
         <>
@@ -296,7 +409,7 @@ export function Zaehlmaske({ zaehlungId, datum, status, artikel, serverEintraege
                 className="mx-2 mt-2.5 flex items-center gap-2.5 rounded-ctl bg-confirm-soft px-4 py-3 text-sm font-semibold text-confirm-soft-on"
               >
                 <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-confirm" />
-                Alle gezählt — Abschluss über „Liste“
+                Alle gezählt — fertig melden über „Liste“
               </p>
             )}
             <Ziffernblock

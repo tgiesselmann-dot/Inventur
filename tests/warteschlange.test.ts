@@ -5,6 +5,7 @@ import {
   istOffen,
   nachVersand,
   sammelStatus,
+  schluessel,
   statusText,
   vomServer,
   zusammenfuehren,
@@ -12,9 +13,14 @@ import {
   type Eintrag,
 } from '@/offline/warteschlange'
 
+/** Die beiden Lager, an denen die Fälle unten hängen. */
+const THEKE = 'theke'
+const KUEHL = 'kuehlcontainer'
+
 /** Die Pflichtfelder eines Serverwerts, ohne artikelId. */
 const basis = {
   zaehlungId: 'z1',
+  lagerortId: THEKE,
   anzahlGebinde: '2',
   anzahlEinzeln: '0',
   gezaehltAm: '2026-08-07T19:30:00.000Z',
@@ -23,6 +29,7 @@ const basis = {
 function eintrag(teil: Partial<Eintrag> & Pick<Eintrag, 'artikelId'>): Eintrag {
   return {
     zaehlungId: 'z1',
+    lagerortId: THEKE,
     anzahlGebinde: '2',
     anzahlEinzeln: '0',
     gezaehltAm: '2026-08-07T19:30:00.000Z',
@@ -54,7 +61,7 @@ describe('zuSenden', () => {
     ])
 
     expect(stapel.nutzlast.map((n) => n.artikelId)).toEqual(['offen'])
-    expect(stapel.staende.get('offen')).toBe(2)
+    expect(stapel.staende.get(schluessel({ lagerortId: THEKE, artikelId: 'offen' }))).toBe(2)
   })
 
   it('schickt die Zählzeit mit, nicht die Versandzeit', () => {
@@ -76,7 +83,7 @@ describe('nachVersand', () => {
   it('markiert die bestätigten Einträge als erledigt', () => {
     const nachher = nachVersand(
       [eintrag({ artikelId: 'a', stand: 2, gesendeterStand: null })],
-      new Map([['a', 2]]),
+      new Map([[schluessel({ lagerortId: THEKE, artikelId: 'a' }), 2]]),
     )
     expect(istOffen(nachher[0])).toBe(false)
   })
@@ -87,7 +94,7 @@ describe('nachVersand', () => {
     // immer auf dem Gerät liegen.
     const nachher = nachVersand(
       [eintrag({ artikelId: 'a', stand: 3, gesendeterStand: null })],
-      new Map([['a', 2]]),
+      new Map([[schluessel({ lagerortId: THEKE, artikelId: 'a' }), 2]]),
     )
     expect(istOffen(nachher[0])).toBe(true)
     expect(nachher[0].gesendeterStand).toBe(2)
@@ -95,7 +102,9 @@ describe('nachVersand', () => {
 
   it('rührt Einträge nicht an, die nicht im Versand waren', () => {
     const vorher = [eintrag({ artikelId: 'b', stand: 5, gesendeterStand: null })]
-    expect(nachVersand(vorher, new Map([['a', 2]]))[0]).toBe(vorher[0])
+    expect(nachVersand(vorher, new Map([[schluessel({ lagerortId: THEKE, artikelId: 'a' }), 2]]))[0]).toBe(
+      vorher[0],
+    )
   })
 
   it('setzt einen bestätigten Stand nie zurück', () => {
@@ -103,7 +112,7 @@ describe('nachVersand', () => {
     // neueren Stand nicht überschreiben.
     const nachher = nachVersand(
       [eintrag({ artikelId: 'a', stand: 5, gesendeterStand: 4 })],
-      new Map([['a', 2]]),
+      new Map([[schluessel({ lagerortId: THEKE, artikelId: 'a' }), 2]]),
     )
     expect(nachher[0].gesendeterStand).toBe(4)
   })
@@ -115,7 +124,7 @@ describe('geaendert', () => {
   it('legt einen neuen Eintrag mit Stand 1 an', () => {
     const neu = geaendert(
       undefined,
-      { zaehlungId: 'z1', artikelId: 'a', anzahlGebinde: '2', anzahlEinzeln: '5' },
+      { zaehlungId: 'z1', lagerortId: THEKE, artikelId: 'a', anzahlGebinde: '2', anzahlEinzeln: '5' },
       jetzt,
     )
     expect(neu.stand).toBe(1)
@@ -127,7 +136,7 @@ describe('geaendert', () => {
     const vorher = eintrag({ artikelId: 'a', stand: 3, gesendeterStand: 3 })
     const neu = geaendert(
       vorher,
-      { zaehlungId: 'z1', artikelId: 'a', anzahlGebinde: '4', anzahlEinzeln: '0' },
+      { zaehlungId: 'z1', lagerortId: THEKE, artikelId: 'a', anzahlGebinde: '4', anzahlEinzeln: '0' },
       jetzt,
     )
     expect(neu.stand).toBe(4)
@@ -157,6 +166,73 @@ describe('zusammenfuehren', () => {
 
   it('sieht einen reinen Serverwert nicht als offen an', () => {
     expect(istOffen(vomServer({ ...basis, artikelId: 'b' }))).toBe(false)
+  })
+
+  it('lässt den Wert des anderen Lagers unangetastet', () => {
+    // Der Fall, für den die Lagerorte gebaut sind: zwei zählen gleichzeitig.
+    // Dieses Gerät steht an der Theke und hat lokal nur Theken-Werte. Was der
+    // Kollege im Kühlcontainer gezählt hat, kommt vom Server — und darf hier
+    // nicht verschwinden, nur weil es derselbe Artikel ist.
+    const zusammen = zusammenfuehren(
+      [eintrag({ lagerortId: THEKE, artikelId: 'cola', anzahlGebinde: '3' })],
+      [
+        vomServer({ ...basis, lagerortId: THEKE, artikelId: 'cola', anzahlGebinde: '1' }),
+        vomServer({ ...basis, lagerortId: KUEHL, artikelId: 'cola', anzahlGebinde: '12' }),
+      ],
+    )
+
+    expect(zusammen).toHaveLength(2)
+    const theke = zusammen.find((e) => e.lagerortId === THEKE)
+    const kuehl = zusammen.find((e) => e.lagerortId === KUEHL)
+    // Lokal gewinnt an der Theke …
+    expect(theke?.anzahlGebinde).toBe('3')
+    // … und der Kühlcontainer bleibt, wie der Kollege ihn gezählt hat.
+    expect(kuehl?.anzahlGebinde).toBe('12')
+  })
+})
+
+describe('derselbe Artikel an zwei Orten', () => {
+  it('hält beide Werte im Stapel auseinander', () => {
+    // Auf den Artikel allein gekeyt fiele hier einer der beiden Werte weg — er
+    // stünde lokal richtig da und käme nie beim Server an.
+    const stapel = zuSenden([
+      eintrag({ lagerortId: THEKE, artikelId: 'cola', stand: 1, gesendeterStand: null }),
+      eintrag({ lagerortId: KUEHL, artikelId: 'cola', stand: 1, gesendeterStand: null }),
+    ])
+
+    expect(stapel.nutzlast).toHaveLength(2)
+    expect(stapel.staende.size).toBe(2)
+  })
+
+  it('bestätigt nur den Ort, der wirklich gesendet wurde', () => {
+    const nachher = nachVersand(
+      [
+        eintrag({ lagerortId: THEKE, artikelId: 'cola', stand: 1, gesendeterStand: null }),
+        eintrag({ lagerortId: KUEHL, artikelId: 'cola', stand: 1, gesendeterStand: null }),
+      ],
+      new Map([[schluessel({ lagerortId: THEKE, artikelId: 'cola' }), 1]]),
+    )
+
+    expect(istOffen(nachher.find((e) => e.lagerortId === THEKE)!)).toBe(false)
+    expect(istOffen(nachher.find((e) => e.lagerortId === KUEHL)!)).toBe(true)
+  })
+
+  it('ändert beim Zählen nur den Wert seines eigenen Ortes', () => {
+    const theke = eintrag({ lagerortId: THEKE, artikelId: 'cola', anzahlGebinde: '3' })
+    const neu = geaendert(
+      undefined,
+      {
+        zaehlungId: 'z1',
+        lagerortId: KUEHL,
+        artikelId: 'cola',
+        anzahlGebinde: '12',
+        anzahlEinzeln: '0',
+      },
+      new Date('2026-08-07T19:30:00.000Z'),
+    )
+
+    expect(schluessel(neu)).not.toBe(schluessel(theke))
+    expect(neu.anzahlGebinde).toBe('12')
   })
 })
 

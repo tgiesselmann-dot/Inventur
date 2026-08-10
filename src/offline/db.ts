@@ -16,7 +16,17 @@ import type { ZaehlArtikel } from '@/lib/zaehlung'
 import type { Eintrag } from '@/offline/warteschlange'
 
 const DB_NAME = 'inventur'
-const DB_VERSION = 1
+/**
+ * 2: Die Zählwerte tragen seit den Lagerorten einen Ort im Schlüssel.
+ *
+ * Ein keyPath lässt sich nicht ändern — der Speicher wird beim Aufstieg neu
+ * angelegt und die alten Einträge fallen dabei weg. Das ist die richtige
+ * Reihenfolge und kein Verlust: alte Einträge kennen keinen Ort, und ein
+ * geratener Ort wäre schlimmer als ein erneut gezähltes Fach. Was den Server
+ * erreicht hat — und das ist im Normalfall alles — kommt beim nächsten Öffnen
+ * von dort zurück.
+ */
+const DB_VERSION = 2
 
 /** Artikelstamm und Kopfdaten einer Zählung, gespiegelt für den Offline-Betrieb. */
 const STAMM = 'stamm'
@@ -55,11 +65,15 @@ export function oeffne(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STAMM)) {
         db.createObjectStore(STAMM, { keyPath: 'zaehlungId' })
       }
-      if (!db.objectStoreNames.contains(EINTRAEGE)) {
-        // Zusammengesetzter Schlüssel: derselbe Artikel kann in mehreren
-        // Zählungen vorkommen und ist dort ein eigener Wert.
-        db.createObjectStore(EINTRAEGE, { keyPath: ['zaehlungId', 'artikelId'] })
+      // Der Schlüssel trägt seit Version 2 den Lagerort. Ein vorhandener
+      // Speicher wird deshalb weggeworfen und neu angelegt — siehe DB_VERSION.
+      if (db.objectStoreNames.contains(EINTRAEGE)) {
+        db.deleteObjectStore(EINTRAEGE)
       }
+      // Zusammengesetzter Schlüssel: derselbe Artikel kann in mehreren
+      // Zählungen vorkommen und innerhalb einer Zählung an mehreren Orten
+      // stehen — jedes davon ist ein eigener Wert.
+      db.createObjectStore(EINTRAEGE, { keyPath: ['zaehlungId', 'lagerortId', 'artikelId'] })
     }
 
     anfrage.onsuccess = () => erfuellen(anfrage.result)

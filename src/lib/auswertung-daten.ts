@@ -18,6 +18,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { ZaehlungStatus } from '@/generated/prisma/enums'
 import {
   bestand,
+  einheitenJeArtikel,
   jeKategorie,
   schwundquote,
   summe,
@@ -273,11 +274,19 @@ export async function datenlage(betriebId: string, zeitraum: Zeitraum): Promise<
     }),
     prisma.zaehlposition.findMany({
       where: { zaehlungId: zeitraum.vonZaehlungId },
-      include: { artikel: { omit: { einheitsgroesseLiter: true } } },
+      include: {
+        artikel: { omit: { einheitsgroesseLiter: true } },
+        // Der Ortsname wandert in die Belegzeile der Auswertung.
+        lagerort: { select: { name: true } },
+      },
     }),
     prisma.zaehlposition.findMany({
       where: { zaehlungId: zeitraum.bisZaehlungId },
-      include: { artikel: { omit: { einheitsgroesseLiter: true } } },
+      include: {
+        artikel: { omit: { einheitsgroesseLiter: true } },
+        // Der Ortsname wandert in die Belegzeile der Auswertung.
+        lagerort: { select: { name: true } },
+      },
     }),
     prisma.lieferposition.findMany({
       where: {
@@ -319,6 +328,11 @@ export type Zaehlzeile = {
   anzahlGebinde: Decimal
   anzahlEinzeln: Decimal
   artikel: Parameters<typeof gesamtEinheiten>[0]
+  /**
+   * Wo gezählt wurde. Fehlt bei Aufrufern, die den Ort nicht mitladen — dann
+   * steht im Beleg nur „gezählt".
+   */
+  lagerort?: { name: string } | null
 }
 
 /** Eine gelieferte Zeile mit ihrem Beleg. */
@@ -353,12 +367,19 @@ export function datenlageAus(zeitraum: Zeitraum, roh: Rohdaten): Datenlage {
   const artikel: AuswertungsArtikel[] = stamm
   const bewegungen = new Map<string, Bewegungen>(stamm.map((eintrag) => [eintrag.id, leer()]))
 
+  // Je Position ein Beleg, und die Belege nennen den Ort: ein Artikel steht an
+  // mehreren Orten, und im Schwund-Detail ist „12 an der Theke, 30 im
+  // Kühlcontainer" die Auskunft, mit der sich eine auffällige Zahl nachprüfen
+  // lässt. Die Summe selbst bleibt eine je Artikel — der Ort ist eine Herkunft,
+  // kein eigener Bestand.
   for (const position of anfangszaehlung) {
     const eintrag = bewegungen.get(position.artikelId)
     if (eintrag === undefined) continue
     const menge = gesamtEinheiten(position.artikel, position.anzahlGebinde, position.anzahlEinzeln)
     eintrag.anfang = eintrag.anfang.plus(menge)
-    eintrag.belege.anfang.push(beleg(`Zählung ${alsDatumstext(zeitraum.von)}`, 'gezählt', menge))
+    eintrag.belege.anfang.push(
+      beleg(`Zählung ${alsDatumstext(zeitraum.von)}`, gezaehltText(position), menge),
+    )
   }
 
   for (const position of endzaehlung) {
@@ -366,7 +387,9 @@ export function datenlageAus(zeitraum: Zeitraum, roh: Rohdaten): Datenlage {
     if (eintrag === undefined) continue
     const menge = gesamtEinheiten(position.artikel, position.anzahlGebinde, position.anzahlEinzeln)
     eintrag.ist = (eintrag.ist ?? new Decimal(0)).plus(menge)
-    eintrag.belege.ist.push(beleg(`Zählung ${alsDatumstext(zeitraum.bis)}`, 'gezählt', menge))
+    eintrag.belege.ist.push(
+      beleg(`Zählung ${alsDatumstext(zeitraum.bis)}`, gezaehltText(position), menge),
+    )
   }
 
   for (const position of lieferpositionen) {
@@ -492,12 +515,15 @@ async function zeilenAusZaehlung(zaehlungId: string): Promise<Zeile[]> {
     include: { artikel: { omit: { einheitsgroesseLiter: true } } },
   })
 
-  return positionen.map((position) =>
-    zeile(position.artikel, {
-      ...leer(),
-      ist: gesamtEinheiten(position.artikel, position.anzahlGebinde, position.anzahlEinzeln),
-    }),
-  )
+  // Eine Zeile je Artikel, nicht je Position: derselbe Artikel steht an der
+  // Theke und im Kühlcontainer und hat dann zwei Zählzeilen. Ohne dieses
+  // Zusammenfassen erschiene er im Ergebnis mehrfach, jedes Mal mit einem
+  // Teilbestand — und die Summe darüber wäre in jeder Anzeige eine andere.
+  // Gerechnet wird in src/lib/auswertung.ts, hier wird nur zugeordnet.
+  const summen = einheitenJeArtikel(positionen)
+  const stamm = new Map(positionen.map((position) => [position.artikelId, position.artikel]))
+
+  return [...summen].map(([artikelId, ist]) => zeile(stamm.get(artikelId)!, { ...leer(), ist }))
 }
 
 /**
@@ -547,7 +573,12 @@ export async function zaehlungsergebnis(
       orderBy: { datum: 'desc' },
     }),
     prisma.artikel.count({ where: { betriebId: zaehlung.betriebId, aktiv: true } }),
-    prisma.zaehlposition.count({ where: { zaehlungId } }),
+    // Gezählte *Artikel*, nicht gezählte Zeilen: ein Artikel, der an drei Orten
+    // steht, ist ein gezählter Artikel und nicht drei. Ohne `distinct` stünde
+    // hier „137 von 99".
+    prisma.zaehlposition
+      .findMany({ where: { zaehlungId }, select: { artikelId: true }, distinct: ['artikelId'] })
+      .then((zeilen) => zeilen.length),
     prisma.zaehlposition.aggregate({
       where: { zaehlungId },
       _min: { gezaehltAm: true },
@@ -597,6 +628,16 @@ export async function zaehlungsergebnis(
       ),
     auffaelligerSchwund,
   }
+}
+
+/**
+ * Die Herkunft einer Zählzeile im Beleg: „gezählt · Kühlcontainer".
+ *
+ * Ohne Ort bleibt es beim blossen „gezählt" — so wie vor den Lagerorten und so
+ * wie bei Aufrufern, die den Ort nicht mitladen.
+ */
+function gezaehltText(position: Zaehlzeile): string {
+  return position.lagerort == null ? 'gezählt' : `gezählt · ${position.lagerort.name}`
 }
 
 function beleg(ref: string, text: string, menge: Decimal): Beleg {

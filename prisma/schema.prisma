@@ -137,9 +137,11 @@ model Betrieb {
 
   benutzer                  Benutzer[]
   artikel                   Artikel[]
+  lagerorte                 Lagerort[]
   kassenartikel             Kassenartikel[]
   kassenartikelbestandteile Kassenartikelbestandteil[]
   zaehlungen            Zaehlung[]
+  zaehlabschnitte       Zaehlabschnitt[]
   zaehlpositionen       Zaehlposition[]
   bestellungen          Bestellung[]
   bestellpositionen     Bestellposition[]
@@ -177,6 +179,8 @@ model Benutzer {
 
   betrieb               Betrieb               @relation(fields: [betriebId], references: [id], onDelete: Restrict)
   gepruefteLieferungen  Lieferung[]
+  begonneneAbschnitte   Zaehlabschnitt[]      @relation("AbschnittBegonnenVon")
+  fertigeAbschnitte     Zaehlabschnitt[]      @relation("AbschnittFertigVon")
   abweichungsereignisse Abweichungsereignis[]
 
   @@index([betriebId])
@@ -234,6 +238,38 @@ model Artikel {
   // Deckt die sortierte Liste der aktiven Artikel ab.
   @@index([betriebId, aktiv, sortierung])
   @@map("artikel")
+}
+
+/// Ein Ort, an dem gezählt wird — Theke, Kiosk, Kühlcontainer, blauer Container.
+///
+/// Ein Lagerort sagt, *wo gezählt wurde*, und nicht, wo Ware gebucht ist. Der
+/// Bestand eines Artikels bleibt die Summe über alle Orte; einen Bestand je
+/// Lager gibt es nicht, und deshalb auch keine Umlagerung. Ein Sollbestand je
+/// Lager wäre nur mit lückenloser Erfassung jedes Nachfüllens zu haben — im
+/// laufenden Betrieb hält das niemand durch, und eine Rechnung auf lückenhaften
+/// Umlagerungen wäre schlechter als gar keine.
+///
+/// Bewusst ohne Reihenfolgefeld. Ein solches Feld liest sich im Lager als
+/// Vorschrift, in welcher Reihenfolge zu zählen sei, und das ist ausdrücklich
+/// nicht gewollt. Die Anzeige sortiert nach `id`: die Schlüssel sind UUIDv7 und
+/// damit zeitgeordnet, was der Reihenfolge des Anlegens entspricht — stabil
+/// genug, dass die Liste nicht springt, ohne eine Laufrichtung zu behaupten.
+///
+/// Wird wie ein Artikel nie gelöscht, sondern über `aktiv = false` stillgelegt.
+/// Ein aufgegebenes Lager muss in alten Zählungen lesbar bleiben.
+model Lagerort {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  betriebId String  @map("betrieb_id") @db.Uuid
+  name      String
+  aktiv     Boolean @default(true)
+
+  betrieb         Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  zaehlpositionen Zaehlposition[]
+  abschnitte      Zaehlabschnitt[]
+
+  // Indiziert betriebId zugleich als führende Spalte.
+  @@unique([betriebId, name])
+  @@map("lagerort")
 }
 
 /// Eine Bezeichnung, wie sie im Kassensystem gebucht wird — die Hülle, an der
@@ -307,17 +343,63 @@ model Zaehlung {
   datum     DateTime       @db.Date
   status    ZaehlungStatus @default(OFFEN)
 
-  betrieb    Betrieb         @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  betrieb    Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  abschnitte Zaehlabschnitt[]
   positionen Zaehlposition[]
 
   @@index([betriebId, datum])
   @@map("zaehlung")
 }
 
+/// Der Teil einer Zählung, der an einem Lagerort stattfindet — und der Träger
+/// der Fertigmeldung.
+///
+/// Ohne diese Zeile liesse sich „an der Theke ist noch nichts gezählt" nicht von
+/// „an der Theke ist alles gezählt, dort steht nur nichts mehr" unterscheiden.
+/// Genau diese beiden Fälle sehen in der Auswertung sonst gleich aus, und der
+/// eine ist ein vergessenes Lager, der andere ein leeres.
+///
+/// Sie trägt zugleich, wer den Ort begonnen hat. Damit kann die Ortsliste beim
+/// Zählen zu zweit warnen, dass jemand anders dort schon dabei ist. Es ist
+/// bewusst nur eine Warnung und keine Sperre: ein leerer Akku darf den zweiten
+/// Zähler nicht aus seinem Lager aussperren.
+model Zaehlabschnitt {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  betriebId     String    @map("betrieb_id") @db.Uuid
+  zaehlungId    String    @map("zaehlung_id") @db.Uuid
+  lagerortId    String    @map("lagerort_id") @db.Uuid
+  begonnenAm    DateTime  @default(now()) @map("begonnen_am") @db.Timestamptz(6)
+  /// null bei Abschnitten, die die Migration für Altzählungen angelegt hat —
+  /// dort weiss niemand mehr, wer gezählt hat.
+  begonnenVonId String?   @map("begonnen_von_id") @db.Uuid
+  /// null heisst: dieser Ort ist noch nicht fertig. Erst wenn jeder aktive Ort
+  /// einen Zeitpunkt trägt, lässt sich die Zählung abschliessen.
+  fertigAm      DateTime? @map("fertig_am") @db.Timestamptz(6)
+  fertigVonId   String?   @map("fertig_von_id") @db.Uuid
+
+  betrieb     Betrieb   @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  zaehlung    Zaehlung  @relation(fields: [zaehlungId], references: [id], onDelete: Cascade)
+  lagerort    Lagerort  @relation(fields: [lagerortId], references: [id], onDelete: Restrict)
+  begonnenVon Benutzer? @relation("AbschnittBegonnenVon", fields: [begonnenVonId], references: [id], onDelete: Restrict)
+  fertigVon   Benutzer? @relation("AbschnittFertigVon", fields: [fertigVonId], references: [id], onDelete: Restrict)
+
+  // Ein Ort kommt in einer Zählung genau einmal vor. Indiziert zugleich
+  // zaehlungId als führende Spalte — die Abfrage der Maske.
+  @@unique([zaehlungId, lagerortId])
+  @@index([betriebId])
+  @@index([lagerortId])
+  @@index([begonnenVonId])
+  @@index([fertigVonId])
+  @@map("zaehlabschnitt")
+}
+
 model Zaehlposition {
   id            String   @id @default(uuid(7)) @db.Uuid
   betriebId     String   @map("betrieb_id") @db.Uuid
   zaehlungId    String   @map("zaehlung_id") @db.Uuid
+  /// Wo dieser Wert gezählt wurde. Derselbe Artikel steht in mehreren Lagern und
+  /// hat dann je Ort eine Zeile; sein Bestand ist deren Summe.
+  lagerortId    String   @map("lagerort_id") @db.Uuid
   artikelId     String   @map("artikel_id") @db.Uuid
   /// Volle Liefergebinde. Bleibt 0, wenn der Artikel nur EINZELN gezählt wird.
   anzahlGebinde Decimal  @map("anzahl_gebinde") @db.Decimal(10, 2)
@@ -327,11 +409,16 @@ model Zaehlposition {
 
   betrieb  Betrieb  @relation(fields: [betriebId], references: [id], onDelete: Restrict)
   zaehlung Zaehlung @relation(fields: [zaehlungId], references: [id], onDelete: Cascade)
+  lagerort Lagerort @relation(fields: [lagerortId], references: [id], onDelete: Restrict)
   artikel  Artikel  @relation(fields: [artikelId], references: [id], onDelete: Restrict)
 
-  // Indiziert zugleich zaehlungId als führende Spalte.
-  @@unique([zaehlungId, artikelId])
+  // Je Ort eine Zeile: derselbe Artikel darf in einer Zählung mehrfach
+  // vorkommen, aber nicht zweimal am selben Ort. Indiziert zugleich zaehlungId
+  // als führende Spalte — und über das Paar (zaehlungId, lagerortId) auch die
+  // Abfrage der Maske, die nur einen Ort lädt.
+  @@unique([zaehlungId, lagerortId, artikelId])
   @@index([betriebId])
+  @@index([lagerortId])
   @@index([artikelId])
   @@map("zaehlposition")
 }

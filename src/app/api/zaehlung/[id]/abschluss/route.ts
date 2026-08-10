@@ -1,16 +1,25 @@
 /**
- * Schliesst eine Zählung ab — aber nur, wenn jeder aktive Artikel einen Wert
- * hat.
+ * Schliesst eine Zählung ab — aber nur, wenn zwei Bedingungen erfüllt sind.
+ *
+ * Erstens: jedes aktive Lager ist fertig gemeldet. Ein Lager, in das niemand
+ * gegangen ist, sieht in der Schwundrechnung aus wie eines, aus dem die Ware
+ * verschwunden ist; die Meldung ist die einzige Stelle, an der diese beiden
+ * Fälle auseinandergehen. Es gibt bewusst keinen Weg daran vorbei — kein
+ * „überspringen", kein Durchwinken mit Warnung.
+ *
+ * Zweitens: jeder aktive Artikel hat *irgendwo* einen Wert. Nicht an jedem Ort —
+ * eine Cola, die nur an der Theke steht, soll in drei anderen Lagern keine Null
+ * brauchen. Aber ein Artikel, den niemand irgendwo gezählt hat, ist eine Lücke,
+ * die in der Auswertung wie ein Bestand von null aussähe.
  *
  * Die Prüfung steht hier und nicht nur in der Maske. Der Client prüft ebenfalls,
  * damit der Zähler die Lücken sieht, ohne auf eine Antwort zu warten; das ist
  * Bequemlichkeit. Verlassen darf sich darauf niemand: die Maske kann mit einem
  * veralteten Artikelstamm arbeiten, wenn zwischendurch ein Artikel aktiviert
- * wurde, und eine unvollständige Zählung fällt sonst erst in der Auswertung auf,
- * wo die fehlende Zeile wie ein Bestand von null aussieht.
+ * wurde.
  *
- * Stillgelegte Artikel (aktiv = false) werden nicht verlangt. Sie stehen nicht
- * mehr im Lager, ihre alten Zählungen bleiben aber erhalten.
+ * Stillgelegte Artikel und stillgelegte Lager werden nicht verlangt. Sie stehen
+ * nicht mehr im Betrieb, ihre alten Zählungen bleiben aber erhalten.
  */
 
 import { ZaehlungStatus } from '@/generated/prisma/enums'
@@ -37,21 +46,45 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/zaehlung/[
   if (zaehlung.status === ZaehlungStatus.ABGESCHLOSSEN) {
     // Kein Fehler: ein zweiter Klick nach einer verlorenen Antwort soll nicht
     // wie ein Problem aussehen.
-    return Response.json({ status: ZaehlungStatus.ABGESCHLOSSEN, fehlend: [] })
+    return Response.json({ status: ZaehlungStatus.ABGESCHLOSSEN, fehlend: [], offeneLager: [] })
   }
 
-  const fehlend = await prisma.artikel.findMany({
-    where: {
-      betriebId: zaehlung.betriebId,
-      aktiv: true,
-      zaehlpositionen: { none: { zaehlungId: id } },
-    },
-    select: { id: true, name: true, kategorie: true, lieferGebindeText: true, sortierung: true },
-    orderBy: { sortierung: 'asc' },
-  })
+  const [offeneLager, fehlend] = await Promise.all([
+    // Jedes aktive Lager ohne Fertigmeldung — auch die, für die es noch gar
+    // keinen Abschnitt gibt, weil dort niemand war. Genau die sind gemeint.
+    prisma.lagerort.findMany({
+      where: {
+        betriebId: zaehlung.betriebId,
+        aktiv: true,
+        abschnitte: { none: { zaehlungId: id, fertigAm: { not: null } } },
+      },
+      select: { id: true, name: true },
+      orderBy: { id: 'asc' },
+    }),
+    // Artikel ohne Wert an *irgendeinem* Ort dieser Zählung.
+    prisma.artikel.findMany({
+      where: {
+        betriebId: zaehlung.betriebId,
+        aktiv: true,
+        zaehlpositionen: { none: { zaehlungId: id } },
+      },
+      select: { id: true, name: true, kategorie: true, lieferGebindeText: true, sortierung: true },
+      orderBy: { sortierung: 'asc' },
+    }),
+  ])
+
+  if (offeneLager.length > 0) {
+    return Response.json(
+      { fehler: 'Es sind noch nicht alle Lager fertig gemeldet', offeneLager, fehlend },
+      { status: 409 },
+    )
+  }
 
   if (fehlend.length > 0) {
-    return Response.json({ fehler: 'Es fehlen noch Werte', fehlend }, { status: 409 })
+    return Response.json(
+      { fehler: 'Es fehlen noch Werte', fehlend, offeneLager: [] },
+      { status: 409 },
+    )
   }
 
   await prisma.zaehlung.update({
@@ -59,5 +92,5 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/zaehlung/[
     data: { status: ZaehlungStatus.ABGESCHLOSSEN },
   })
 
-  return Response.json({ status: ZaehlungStatus.ABGESCHLOSSEN, fehlend: [] })
+  return Response.json({ status: ZaehlungStatus.ABGESCHLOSSEN, fehlend: [], offeneLager: [] })
 }

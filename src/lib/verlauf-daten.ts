@@ -78,7 +78,11 @@ export async function verlaufslage(
       }),
       prisma.zaehlposition.findMany({
         where: { zaehlungId: { in: zaehlungsIds } },
-        include: { artikel: { omit: { einheitsgroesseLiter: true } } },
+        include: {
+        artikel: { omit: { einheitsgroesseLiter: true } },
+        // Der Ortsname wandert in die Belegzeile der Auswertung.
+        lagerort: { select: { name: true } },
+      },
       }),
       prisma.lieferposition.findMany({
         where: {
