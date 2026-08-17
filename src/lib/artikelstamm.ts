@@ -16,6 +16,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 
 import { EkPreisBezug, Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
 import { euroInCent, type Artikelstammsatz } from '@/lib/artikelimport'
+import { passtZurSuche } from '@/lib/artikelsuche'
 import { deutscheZahl } from '@/lib/csv'
 import {
   einheitenAusGebinden,
@@ -454,20 +455,17 @@ export type Listenfilter = {
 type Filterbar = { name: string; lieferGebindeText: string; kategorie: string; aktiv: boolean }
 
 /**
- * Filtert die Liste. Die Suche greift auf Name und Gebindetext zu, weil erst
- * beides zusammen einen Artikel benennt — "Cola 24" muss die 24er-Kiste
- * finden, obwohl die 24 nicht im Namen steht.
+ * Filtert die Liste. Die Trefferregel selbst steht in src/lib/artikelsuche.ts —
+ * die Zählliste im Lager sucht mit derselben, und zwei Fassungen davon würden
+ * bei derselben Eingabe Verschiedenes finden.
  */
 export function gefiltert<T extends Filterbar>(liste: readonly T[], filter: Listenfilter): T[] {
-  const woerter = filter.suche.trim().toLowerCase().split(/\s+/).filter(Boolean)
-
   return liste.filter((artikel) => {
     if (filter.stand === 'aktiv' && !artikel.aktiv) return false
     if (filter.stand === 'stillgelegt' && artikel.aktiv) return false
     if (filter.kategorie !== '' && artikel.kategorie !== filter.kategorie) return false
 
-    const heuhaufen = `${artikel.name} ${artikel.lieferGebindeText}`.toLowerCase()
-    return woerter.every((wort) => heuhaufen.includes(wort))
+    return passtZurSuche(artikel, filter.suche)
   })
 }
 

@@ -52,13 +52,60 @@ function alsPromise<T>(anfrage: IDBRequest<T>): Promise<T> {
 let offen: Promise<IDBDatabase> | undefined
 
 /**
+ * Wie lange auf den Browserspeicher gewartet wird, bevor die Maske ohne ihn
+ * weitermacht.
+ *
+ * Drei Sekunden sind für ein `open` unverschämt viel — wenn danach nichts
+ * gekommen ist, kommt nichts mehr. Eine Grenze braucht es trotzdem: Safari
+ * beantwortet ein `open` unter Umständen weder mit Erfolg noch mit Fehler, und
+ * ohne Grenze bliebe die Zählmaske hinter ihrem Ladezustand stehen. Lieber ohne
+ * Gedächtnis zählen als gar nicht.
+ */
+const OEFFNEN_GRENZE_MS = 3_000
+
+/**
  * Öffnet die Datenbank und legt beim ersten Mal die Speicher an. Das Ergebnis
  * wird gemerkt — jeder `open`-Aufruf ist eine eigene Verbindung, und die Maske
  * schreibt bei jedem Tastendruck.
+ *
+ * Drei Ausgänge, nicht zwei: neben Erfolg und Fehler gibt es `blocked`. Der
+ * Browser meldet ihn, wenn eine ältere Verbindung dieselbe Datenbank noch auf
+ * der alten Version offen hält — ein zweiter Tab, die App vom Home-Bildschirm
+ * daneben — und **schweigt danach**. Wer diesen Fall nicht behandelt, hat kein
+ * Versprechen, das ablehnt, sondern eines, das nie antwortet; dagegen hilft
+ * auch das beste `catch` beim Aufrufer nichts.
+ *
+ * Wird abgelehnt, fällt der gemerkte Wert weg: der blockierende Tab kann
+ * geschlossen werden, und der nächste Versuch soll dann wieder eine Chance
+ * haben. Kommt die verwaiste Verbindung danach doch noch, wird sie geschlossen
+ * — offen gelassen blockierte sie ihrerseits den nächsten Aufstieg.
  */
 export function oeffne(): Promise<IDBDatabase> {
   offen ??= new Promise<IDBDatabase>((erfuellen, ablehnen) => {
     const anfrage = indexedDB.open(DB_NAME, DB_VERSION)
+    let entschieden = false
+
+    /** Der eine Ausgang: Uhr aus, Ergebnis melden, weitere Meldungen verwerfen. */
+    const entscheiden = (zug: () => void) => {
+      if (entschieden) return
+      entschieden = true
+      clearTimeout(uhr)
+      zug()
+    }
+
+    const aufgeben = (grund: string) => {
+      // Der gemerkte Wert muss weg, bevor abgelehnt wird: der Aufrufer darf
+      // sofort einen neuen Versuch starten, und der soll neu öffnen.
+      offen = undefined
+      // Was jetzt noch ankommt, will niemand mehr — die Verbindung aber darf
+      // nicht liegenbleiben.
+      anfrage.onsuccess = () => anfrage.result.close()
+      ablehnen(new Error(grund))
+    }
+
+    const uhr = setTimeout(() => {
+      entscheiden(() => aufgeben(`Browserspeicher antwortet nicht (${OEFFNEN_GRENZE_MS} ms)`))
+    }, OEFFNEN_GRENZE_MS)
 
     anfrage.onupgradeneeded = () => {
       const db = anfrage.result
@@ -76,8 +123,16 @@ export function oeffne(): Promise<IDBDatabase> {
       db.createObjectStore(EINTRAEGE, { keyPath: ['zaehlungId', 'lagerortId', 'artikelId'] })
     }
 
-    anfrage.onsuccess = () => erfuellen(anfrage.result)
-    anfrage.onerror = () => ablehnen(anfrage.error)
+    anfrage.onsuccess = () => entscheiden(() => erfuellen(anfrage.result))
+    anfrage.onerror = () =>
+      entscheiden(() => {
+        offen = undefined
+        ablehnen(anfrage.error ?? new Error('Browserspeicher nicht lesbar'))
+      })
+    anfrage.onblocked = () =>
+      entscheiden(() =>
+        aufgeben('Browserspeicher von einem anderen Fenster belegt — dort schliessen'),
+      )
   })
 
   return offen

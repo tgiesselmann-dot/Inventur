@@ -175,7 +175,10 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]'>) {
 
       {!abgeschlossen && staende.length > 0 && fertige === staende.length && (
         <div className="mt-6 mb-4">
-          <ZaehlungAbschliessen zaehlungId={id} />
+          <ZaehlungAbschliessen
+            zaehlungId={id}
+            lagerorte={lagerorte.map((ort) => ({ id: ort.id, name: ort.name }))}
+          />
         </div>
       )}
 

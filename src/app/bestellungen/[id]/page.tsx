@@ -33,7 +33,9 @@ import {
   type Bestellzeile,
 } from '@/lib/bestellung'
 import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { alsMenge } from '@/lib/auswertung'
 import { vorschlagslage } from '@/lib/bestellung-daten'
+import { gebindeAusEinheiten } from '@/lib/einheiten'
 import { alsDatumstext } from '@/lib/datum'
 import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
@@ -96,6 +98,13 @@ export default async function Page({ params }: PageProps<'/bestellungen/[id]'>) 
 
     const rechnung = lage?.lage.get(artikel.id)
 
+    // Einmal gerechnet, zweimal gezeigt: Vorschlag und Bestand kommen aus
+    // derselben Zeile des Vorschlags.
+    const vergleich =
+      lage === undefined || lage === null || rechnung === undefined
+        ? null
+        : vorschlagszeile(artikel, rechnung, lage.rahmen)
+
     return {
       artikel,
       artikelId: artikel.id,
@@ -107,10 +116,13 @@ export default async function Page({ params }: PageProps<'/bestellungen/[id]'>) 
       // Gesperrt schon bei einer ungeprüften Lieferposition: die Fremdschlüssel
       // zeigt auch dann darauf, und die Datenbank lässt das Löschen nicht zu.
       gesperrt: (position?.lieferpositionen.length ?? 0) > 0,
-      vorschlagGebinde:
-        lage === undefined || lage === null || rechnung === undefined
+      vorschlagGebinde: vergleich === null ? null : vergleich.vorschlagGebinde,
+      // In Gebinden, wie alle Mengen dieser Maske — die Umrechnung ist die
+      // Division aus einheiten.ts, keine eigene.
+      bestand:
+        vergleich === null || vergleich.bestand === null
           ? null
-          : vorschlagszeile(artikel, rechnung, lage.rahmen).vorschlagGebinde,
+          : alsMenge(gebindeAusEinheiten(artikel, vergleich.bestand)),
     }
   })
 

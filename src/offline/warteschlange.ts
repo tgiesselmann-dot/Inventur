@@ -55,6 +55,27 @@ export function istOffen(eintrag: Eintrag): boolean {
   return eintrag.gesendeterStand !== eintrag.stand
 }
 
+/** Wie viele Einträge noch zum Server müssen. */
+export function anzahlOffen(eintraege: readonly Eintrag[]): number {
+  return eintraege.filter(istOffen).length
+}
+
+/**
+ * Die offenen Einträge, je Lagerort gezählt.
+ *
+ * Für die Sperre vor dem Abschluss: die Ortswahl soll nicht nur sagen, *dass*
+ * noch Werte auf dem Gerät liegen, sondern aus welchem Lager sie stammen —
+ * dorthin muss, wer sie loswerden will, denn gesendet wird nur aus der offenen
+ * Zählmaske.
+ */
+export function offeneJeOrt(eintraege: readonly Eintrag[]): Map<string, number> {
+  const je = new Map<string, number>()
+  for (const eintrag of eintraege) {
+    if (istOffen(eintrag)) je.set(eintrag.lagerortId, (je.get(eintrag.lagerortId) ?? 0) + 1)
+  }
+  return je
+}
+
 export type Stapel = {
   /** Was gesendet wird. */
   nutzlast: Nutzlast[]
@@ -185,6 +206,11 @@ export type Sammelstatus =
   | { art: 'wartet'; offen: number }
   | { art: 'abgelehnt'; offen: number }
   | { art: 'abgemeldet'; offen: number }
+  /**
+   * Der Browserspeicher steht nicht zur Verfügung — die Zählung läuft, aber
+   * ohne Netz ist jeder Wert nur so lange da, wie die Seite offen bleibt.
+   */
+  | { art: 'ungesichert'; offen: number }
 
 /**
  * Warum ein Stapel liegenblieb.
@@ -213,15 +239,25 @@ export type Ablehnungsgrund = 'abgelehnt' | 'abgemeldet' | null
  * "Abgelehnt" schlägt "wartet": eine Ablehnung ist eine Antwort des Servers,
  * kein Netzproblem — noch ein Funkloch dazu ändert nichts daran, dass diese
  * Werte von allein nicht mehr ankommen.
+ *
+ * "Ungesichert" steht dazwischen: es nennt kein liegengebliebenes Paket,
+ * sondern eine fehlende Rückversicherung — ohne Browserspeicher überlebt kein
+ * Wert das Schliessen der Seite. Eine Ablehnung nennt trotzdem weiterhin sie
+ * selbst, weil dort eine Handlung dranhängt ("Erneut", "Anmelden") und hier
+ * keine. Gegenüber "gespeichert" gewinnt es dagegen auch dann, wenn nichts
+ * aussteht: der grüne Punkt hiesse sonst "leg das Handy ruhig weg", und das
+ * stimmt in diesem Zustand nur, solange die Seite offen bleibt.
  */
 export function sammelStatus(
   eintraege: readonly Eintrag[],
   offline: boolean,
   grund: Ablehnungsgrund = null,
+  ohneSpeicher = false,
 ): Sammelstatus {
-  const offen = eintraege.filter(istOffen).length
+  const offen = anzahlOffen(eintraege)
+  if (offen > 0 && grund !== null) return { art: grund, offen }
+  if (ohneSpeicher) return { art: 'ungesichert', offen }
   if (offen === 0) return { art: 'gespeichert' }
-  if (grund !== null) return { art: grund, offen }
   return offline ? { art: 'wartet', offen } : { art: 'sendet', offen }
 }
 
@@ -245,6 +281,15 @@ export function statusText(status: Sammelstatus): string {
       return status.offen === 1
         ? 'Anmeldung abgelaufen · 1 Wert liegt im Gerät'
         : `Anmeldung abgelaufen · ${status.offen} Werte liegen im Gerät`
+    // Zwei Sätze für einen Zustand, weil der Rat sich unterscheidet: steht
+    // nichts aus, ist alles beim Server und die Seite darf zu. Steht etwas aus,
+    // hängt es allein am Bildschirm — dann ist "nicht schliessen" die Nachricht.
+    case 'ungesichert':
+      return status.offen === 0
+        ? 'Ohne Gerätespeicher · gespeichert'
+        : status.offen === 1
+          ? 'Ohne Gerätespeicher · 1 Wert nur im Bildschirm'
+          : `Ohne Gerätespeicher · ${status.offen} Werte nur im Bildschirm`
     default: {
       const unbekannt: never = status
       throw new Error(`Unbekannter Status: ${JSON.stringify(unbekannt)}`)

@@ -15,6 +15,7 @@ import {
   mengenangabeAusAnteil,
   ekPreisCentAusGebindepreis,
   ekProEinheitCent,
+  gebindeAusEinheiten,
   gebindeFuerEinheiten,
   gesamtEinheiten,
   wertCent,
@@ -228,6 +229,27 @@ describe('gebindeFuerEinheiten', () => {
     // Eine negative Fehlmenge ist keine Bestellung — der Aufrufer kappt sie
     // vorher bei 0.
     expect(() => gebindeFuerEinheiten(kastenBier, -1)).toThrow(EinheitenFehler)
+  })
+})
+
+describe('gebindeAusEinheiten', () => {
+  it('gibt den angebrochenen Kasten als Bruchteil, nicht aufgerundet', () => {
+    // 63 Flaschen sind 2,625 Kästen — als Bestand eine Auskunft, keine
+    // Bestellmenge. Aufgerundet stünde da ein Kasten, der nicht da ist.
+    expect(gebindeAusEinheiten(kastenBier, 63).toString()).toBe('2.625')
+  })
+
+  it('lässt den vollen Kasten glatt', () => {
+    expect(gebindeAusEinheiten(kastenBier, 48).toString()).toBe('2')
+  })
+
+  it('ist beim Einzelflaschen-Artikel die Flaschenzahl selbst', () => {
+    expect(gebindeAusEinheiten(einzelflascheGin, 8).toString()).toBe('8')
+  })
+
+  it('ist die exakte Umkehrung von einheitenAusGebinden', () => {
+    const einheiten = einheitenAusGebinden(kastenBier, new Decimal('2.5'))
+    expect(gebindeAusEinheiten(kastenBier, einheiten).toString()).toBe('2.5')
   })
 })
 

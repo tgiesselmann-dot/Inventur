@@ -20,8 +20,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ZaehlArtikel } from '@/lib/zaehlung'
 import { eintraegeLesen, eintraegeSchreiben, stammSchreiben } from '@/offline/db'
 import {
+  anzahlOffen,
   geaendert,
   nachVersand,
+  offeneJeOrt,
   sammelStatus,
   schluessel,
   zusammenfuehren,
@@ -64,6 +66,17 @@ export type Zaehlstand = {
   setzen: (artikelId: string, werte: { anzahlGebinde: string; anzahlEinzeln: string }) => void
   /** Stösst einen Versand an, etwa vor dem Abschluss. */
   senden: () => Promise<void>
+  /**
+   * Wie viele Werte jetzt gerade noch auf dem Gerät liegen — über alle Orte
+   * der Zählung.
+   *
+   * Eine Funktion und keine Zahl aus dem Render: `senden()` scheitert leise
+   * (kein Netz, eine Ablehnung, ein schon laufender Versand), und wer danach
+   * entscheiden will, ob ein Lager fertig gemeldet werden darf, braucht den
+   * Stand von *nach* dem Versuch — nicht den, mit dem der Bildschirm gebaut
+   * wurde.
+   */
+  offen: () => number
 }
 
 /**
@@ -111,6 +124,25 @@ export function useSyncstatus(zaehlungId: string): Sammelstatus | null {
 }
 
 /**
+ * Was von dieser Zählung noch ungesendet auf dem Gerät liegt, je Lagerort.
+ *
+ * Für die Sperre vor dem Abschluss in der Ortswahl: die hat keinen
+ * `useZaehlstand`, und sie braucht den Stand genau im Moment des Tippens —
+ * nicht den einer Anzeige, die alle fünfzehn Sekunden nachsieht. Der Server
+ * kann diese Prüfung nicht übernehmen, er sieht die Gerätewarteschlange nie.
+ *
+ * Kein IndexedDB heisst kein Rückstand: wo nichts gespeichert wird, kann auch
+ * nichts liegengeblieben sein.
+ */
+export async function offeneWerte(zaehlungId: string): Promise<ReadonlyMap<string, number>> {
+  try {
+    return offeneJeOrt(await eintraegeLesen(zaehlungId))
+  } catch {
+    return new Map()
+  }
+}
+
+/**
  * Der Stand einer Zählung, aus der Sicht eines Lagerorts.
  *
  * Gehalten wird immer die ganze Zählung — alle Orte. Nur so geht ein Wert, der
@@ -150,6 +182,15 @@ export function useZaehlstand(
    * der Zähler es liest.
    */
   const [abgelehnt, setAbgelehnt] = useState<Ablehnungsgrund>(null)
+  /**
+   * true, wenn der Browserspeicher nicht mitspielt — privates Fenster,
+   * gesperrter Speicher, oder eine ältere Verbindung, die ihn belegt.
+   *
+   * Die Zählung läuft dann trotzdem; was fehlt, ist die Rückversicherung gegen
+   * ein geschlossenes Fenster. Das gehört in die Statuszeile, nicht in eine
+   * Konsole, die im Lager niemand sieht.
+   */
+  const [ohneSpeicher, setOhneSpeicher] = useState(false)
   const offline = useOffline()
 
   // Der Versand läuft asynchron und muss beim Zurückschreiben den Stand sehen,
@@ -175,9 +216,12 @@ export function useZaehlstand(
       try {
         lokal = await eintraegeLesen(zaehlungId)
       } catch (ursache) {
-        // Kein IndexedDB (privates Fenster, gesperrter Speicher): die Maske
-        // funktioniert weiter, nur eben ohne Gedächtnis über einen Neustart.
+        // Kein IndexedDB (privates Fenster, gesperrter Speicher, belegt von
+        // einem zweiten Fenster): die Maske funktioniert weiter, nur eben ohne
+        // Gedächtnis über einen Neustart. Sie öffnet auf jeden Fall — was hier
+        // nicht antwortet, darf die Zählung nicht aufhalten.
         console.warn('Lokaler Speicher nicht lesbar, Zählung läuft ohne ihn', ursache)
+        if (!abgebrochen) setOhneSpeicher(true)
       }
       if (abgebrochen) return
 
@@ -198,6 +242,7 @@ export function useZaehlstand(
         })
       } catch (ursache) {
         console.warn('Artikelstamm konnte nicht gespiegelt werden', ursache)
+        if (!abgebrochen) setOhneSpeicher(true)
       }
     }
 
@@ -227,7 +272,10 @@ export function useZaehlstand(
       const eintrag = neu.get(kennung)
       if (eintrag !== undefined) {
         void eintraegeSchreiben([eintrag]).catch((ursache) => {
+          // Auch hier gemeldet und nicht nur beim Öffnen: der Speicher kann
+          // mitten in der Zählung wegbrechen, etwa wenn das Gerät ihn räumt.
           console.warn('Wert konnte nicht lokal gespeichert werden', ursache)
+          setOhneSpeicher(true)
         })
       }
     },
@@ -268,6 +316,8 @@ export function useZaehlstand(
       sendetRef.current = false
     }
   }, [anwenden, zaehlungId])
+
+  const offen = useCallback(() => anzahlOffen([...standRef.current.values()]), [])
 
   // Rückfalllinie: wiedergefundenes Netz und ein Intervall. Hängt bewusst nicht
   // an den Einträgen, sonst würde die Uhr bei jedem Tastendruck neu gestellt.
@@ -311,9 +361,10 @@ export function useZaehlstand(
   return {
     eintraege: meineEintraege,
     erfasst: new Set(meineEintraege.keys()),
-    status: sammelStatus([...eintraege.values()], offline || versandFehlt, abgelehnt),
+    status: sammelStatus([...eintraege.values()], offline || versandFehlt, abgelehnt, ohneSpeicher),
     laedt,
     setzen,
     senden,
+    offen,
   }
 }

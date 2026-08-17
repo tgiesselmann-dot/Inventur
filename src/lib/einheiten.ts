@@ -193,6 +193,22 @@ export function gebindeFuerEinheiten(
     .toNumber()
 }
 
+/**
+ * Einheiten als Bruchteil von Liefergebinden — ungerundet.
+ *
+ * Für die Auskunft, nicht für die Bestellung: "Bestand 2,6 Kästen" neben einer
+ * Bestellmenge in Kästen. `gebindeFuerEinheiten` rundet auf, weil niemand halbe
+ * Kästen liefert — ein aufgerundeter Bestand behauptete dagegen einen Kasten,
+ * der nicht da ist. Beim Einzelflaschen-Artikel ist das Ergebnis die
+ * Flaschenzahl selbst.
+ */
+export function gebindeAusEinheiten(
+  artikel: { einheitenProGebinde: number },
+  einheiten: Menge,
+): Decimal {
+  return zuDecimal(einheiten, 'einheiten').div(gebindegroesse(artikel))
+}
+
 /** Die Felder einer Kassenzuordnung, die für die Umrechnung gebraucht werden. */
 export type Verkaufszuordnung = {
   /** Wie viele Artikel-Einheiten ein Verkauf abbucht. */

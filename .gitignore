@@ -49,3 +49,6 @@ next-env.d.ts
 
 # claude code (persönliche Einstellungen dieser Maschine, enthalten Projekt-Keys)
 .claude/settings.local.json
+
+# Hilfsskripte am Rechner (Demo-Daten, Stand-Abfragen) — gehören nicht zum Produkt
+/.*.mts

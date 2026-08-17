@@ -3,13 +3,17 @@ import { describe, expect, it } from 'vitest'
 import { Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
 import {
   abschnitte,
+  alsEingaben,
   alsPosition,
   dezimaltext,
+  eingabetext,
   felder,
   fortschritt,
   fortschrittsanteil,
   kontrolltext,
+  listenabschnitte,
   naechsterIndex,
+  passtInZaehlliste,
   schritt,
   tasteAnwenden,
   ungezaehlte,
@@ -129,6 +133,56 @@ describe('tasteAnwenden', () => {
   })
 })
 
+describe('eingabetext', () => {
+  it('lässt eine gewöhnliche Eingabe stehen', () => {
+    expect(eingabetext('12', false)).toBe('12')
+    expect(eingabetext('2,5', true)).toBe('2,5')
+  })
+
+  it('nimmt den Punkt als Komma an — manche Zehnertastatur hat nur ihn', () => {
+    expect(eingabetext('2.5', true)).toBe('2,5')
+  })
+
+  it('lässt einen angefangenen Wert stehen, solange getippt wird', () => {
+    expect(eingabetext('2,', true)).toBe('2,')
+  })
+
+  it('ergänzt ein führendes Komma zu "0,"', () => {
+    expect(eingabetext(',5', true)).toBe('0,5')
+  })
+
+  it('wirft weg, was am Ziffernblock nicht einzugeben wäre', () => {
+    // Buchstaben von einer Systemtastatur, das Komma im Kastenfeld, die dritte
+    // Nachkommastelle und die fünfte Vorkommastelle.
+    expect(eingabetext('12a3', false)).toBe('123')
+    expect(eingabetext('2,5', false)).toBe('25')
+    expect(eingabetext('2,555', true)).toBe('2,55')
+    expect(eingabetext('12345', false)).toBe('1234')
+  })
+
+  it('nimmt kein zweites Komma an', () => {
+    expect(eingabetext('2,5,5', true)).toBe('2,55')
+  })
+
+  it('lässt das leere Feld leer — ein Gedankenstrich ist keine Null', () => {
+    expect(eingabetext('', true)).toBe('')
+    expect(eingabetext('abc', true)).toBe('')
+  })
+})
+
+describe('alsEingaben', () => {
+  it('macht aus gespeicherten Dezimaltexten Eingabetexte', () => {
+    expect(alsEingaben({ anzahlGebinde: '2', anzahlEinzeln: '0.5' })).toEqual({
+      anzahlGebinde: '2',
+      anzahlEinzeln: '0,5',
+    })
+  })
+
+  it('gibt am ungezählten Artikel zwei leere Texte, nicht zwei Nullen', () => {
+    expect(alsEingaben(undefined)).toEqual({ anzahlGebinde: '', anzahlEinzeln: '' })
+  })
+})
+
 describe('schritt', () => {
   it('zählt hoch und runter', () => {
     expect(schritt('2', 1)).toBe('3')
@@ -219,6 +273,96 @@ describe('abschnitte', () => {
 
   it('gibt für eine leere Liste keine Abschnitte', () => {
     expect(abschnitte([])).toEqual([])
+  })
+})
+
+describe('passtInZaehlliste', () => {
+  const aperol = artikel({
+    id: 'aperol',
+    name: 'Aperol',
+    kategorie: 'Aperitif',
+    lieferGebindeText: '1 x 1,0',
+  })
+
+  it('findet über den Namen', () => {
+    expect(passtInZaehlliste(aperol, 'aperol')).toBe(true)
+  })
+
+  it('findet über die Kategorie, auch wenn der Name nichts davon trägt', () => {
+    // Der Fall, für den die Regel da ist: "likoer" muss den Ramazzotti finden.
+    const ramazzotti = artikel({ id: 'rama', name: 'Ramazzotti', kategorie: 'Likoer' })
+    expect(passtInZaehlliste(ramazzotti, 'likoer')).toBe(true)
+    expect(passtInZaehlliste(aperol, 'likoer')).toBe(false)
+  })
+
+  it('findet über den Gebindetext', () => {
+    expect(passtInZaehlliste(aperol, '1,0')).toBe(true)
+  })
+
+  it('lässt bei leerer Suche alles durch', () => {
+    expect(passtInZaehlliste(aperol, '')).toBe(true)
+  })
+})
+
+describe('listenabschnitte', () => {
+  // Derselbe Laufweg wie oben: Softdrinks, Energy, noch einmal Softdrinks.
+  const liste = [
+    artikel({ id: 'cola', name: 'Coca Cola', kategorie: 'Softdrinks', sortierung: 70 }),
+    artikel({ id: 'fanta', name: 'Fanta', kategorie: 'Softdrinks', sortierung: 110 }),
+    artikel({ id: 'red', name: 'Red Bull', kategorie: 'Energy', sortierung: 430 }),
+    artikel({ id: 'spezi', name: 'Spezi', kategorie: 'Softdrinks', sortierung: 950 }),
+  ]
+
+  it('gibt ohne Suche alle Abschnitte mit allen Zeilen', () => {
+    expect(
+      listenabschnitte(liste, '').map((block) => [
+        block.station,
+        block.kategorie,
+        block.zeilen.length,
+      ]),
+    ).toEqual([
+      [1, 'Softdrinks', 2],
+      [2, 'Energy', 1],
+      [3, 'Softdrinks', 1],
+    ])
+  })
+
+  it('führt den Index der Zählreihenfolge mit, nicht die Stelle in der Anzeige', () => {
+    const blocks = listenabschnitte(liste, '')
+    expect(blocks.flatMap((block) => block.zeilen.map((zeile) => zeile.index))).toEqual([0, 1, 2, 3])
+  })
+
+  it('behält den Index bei aktiver Suche — sonst springt die Zeile auf den falschen Artikel', () => {
+    const [block] = listenabschnitte(liste, 'spezi')
+    expect(block.zeilen).toHaveLength(1)
+    expect(block.zeilen[0].index).toBe(3)
+  })
+
+  it('lässt Abschnitte ohne Treffer weg, ihre Stationsnummer aber stehen', () => {
+    // Aus dem dritten Halt im Lager wird durch eine Suche nicht der erste.
+    expect(listenabschnitte(liste, 'spezi').map((block) => block.station)).toEqual([3])
+  })
+
+  it('nimmt einen Abschnitt ganz, wenn seine Kategorie passt', () => {
+    // "energy" meint die Station, nicht einen Artikel darin.
+    const blocks = listenabschnitte(liste, 'energy')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].zeilen.map((zeile) => zeile.artikel.id)).toEqual(['red'])
+  })
+
+  it('zeigt denselben Artikel in jedem Abschnitt, in dem er steht', () => {
+    expect(listenabschnitte(liste, 'cola').map((block) => block.station)).toEqual([1])
+  })
+
+  it('rechnet den Stand weiter über alle Artikel des Abschnitts', () => {
+    // Eine Suche macht einen Abschnitt nicht kleiner, sie zeigt ihn schmaler.
+    const [block] = listenabschnitte(liste, 'coca')
+    expect(block.artikel).toHaveLength(2)
+    expect(block.zeilen).toHaveLength(1)
+  })
+
+  it('gibt bei einer Suche ohne Treffer keine Abschnitte', () => {
+    expect(listenabschnitte(liste, 'weissbier')).toEqual([])
   })
 })
 

@@ -21,6 +21,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 
+import { offeneWerte } from '@/offline/verwenden'
 import { Hinweisleiste } from '@/ui/hinweisleiste'
 import { Schaltflaeche } from '@/ui/schaltflaeche'
 
@@ -29,16 +30,39 @@ type Ablehnung = {
   fehlend: { id: string; name: string }[]
 }
 
-export function ZaehlungAbschliessen({ zaehlungId }: { zaehlungId: string }) {
+export function ZaehlungAbschliessen({
+  zaehlungId,
+  lagerorte,
+}: {
+  zaehlungId: string
+  /** Die aktiven Lager samt Namen — um zu sagen, wo liegengebliebene Werte herkommen. */
+  lagerorte: { id: string; name: string }[]
+}) {
   const router = useRouter()
   const [laeuft, starte] = useTransition()
   const [abgelehnt, setAbgelehnt] = useState<Ablehnung | null>(null)
   const [gescheitert, setGescheitert] = useState(false)
+  /** Was noch ungesendet auf diesem Gerät liegt, je Lagerort — oder `null`. */
+  const [aufGeraet, setAufGeraet] = useState<ReadonlyMap<string, number> | null>(null)
 
   function abschliessen() {
     starte(async () => {
       setAbgelehnt(null)
       setGescheitert(false)
+      setAufGeraet(null)
+
+      // Die Gerätewarteschlange sieht nur der Client — der Server kann sie
+      // nicht prüfen. Ein Abschluss über liegengebliebene Werte hinweg sperrt
+      // sie aus (POST …/positionen lehnt bei ABGESCHLOSSEN mit 409 ab) und
+      // zeigt in der Auswertung Schwund, der keiner ist. Nur dieses Gerät:
+      // was auf dem Handy des zweiten Zählers liegt, hält dort dessen eigene
+      // Fertigmeldung auf.
+      const offen = await offeneWerte(zaehlungId)
+      if (offen.size > 0) {
+        setAufGeraet(offen)
+        return
+      }
+
       try {
         const antwort = await fetch(`/api/zaehlung/${zaehlungId}/abschluss`, { method: 'POST' })
         if (antwort.ok) {
@@ -61,8 +85,28 @@ export function ZaehlungAbschliessen({ zaehlungId }: { zaehlungId: string }) {
     })
   }
 
+  const offenAufGeraet =
+    aufGeraet === null ? 0 : [...aufGeraet.values()].reduce((summe, zahl) => summe + zahl, 0)
+  const offeneOrte =
+    aufGeraet === null
+      ? []
+      : lagerorte.filter((ort) => aufGeraet.has(ort.id)).map((ort) => ort.name)
+
   return (
     <div className="flex flex-col gap-tapgap">
+      {aufGeraet !== null && (
+        <Hinweisleiste
+          rolle="attention"
+          titel={
+            offenAufGeraet === 1
+              ? '1 Wert liegt noch ungesendet auf diesem Gerät'
+              : `${offenAufGeraet} Werte liegen noch ungesendet auf diesem Gerät`
+          }
+        >
+          {offeneOrte.length > 0 && <>Aus: {offeneOrte.join(', ')}. </>}
+          Öffnen Sie das Lager, damit die Werte gesendet werden — abschliessen klappt danach.
+        </Hinweisleiste>
+      )}
       {abgelehnt !== null && abgelehnt.offeneLager.length > 0 && (
         <Hinweisleiste rolle="attention" titel="Es sind noch nicht alle Lager fertig gemeldet">
           Offen: {abgelehnt.offeneLager.map((ort) => ort.name).join(', ')}.

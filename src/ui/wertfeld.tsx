@@ -15,9 +15,15 @@
  * 1 px im Ruhezustand würde die Kachel beim Feldwechsel um einen Punkt springen,
  * und die Zahl daneben mit ihr.
  *
- * Die Kachel ist Anzeige und keine Schaltfläche. Gewechselt wird über die
- * Wechseltaste im Ziffernblock — damit liegt oberhalb des unteren Drittels
- * nichts mehr, was auf einen Tipp reagiert.
+ * Die ruhende Kachel ist zugleich der zweite Weg ins andere Feld: wer auf
+ * "lose Flaschen" schaut, tippt darauf, statt die Wechseltaste zu suchen. Die
+ * Wechseltaste im Ziffernblock bleibt trotzdem — sie ist der Weg, der die
+ * Zusage "alles Auslösende im unteren Drittel" hält, und die Kachel ist der
+ * bequeme daneben, nicht ihr Ersatz.
+ *
+ * Die *aktive* Kachel bleibt Anzeige und wird keine Schaltfläche: sie führt
+ * nirgendwohin, und eine Fläche, die auf Antippen nichts tut, verspricht eine
+ * Bedienbarkeit, die sie nicht hat.
  *
  * Was auf dem Schirm die Farbe des Rahmens sagt, muss die Sprachausgabe hören:
  * darum steht der ganze Sachverhalt einmal als Satz in der Kachel, und Zahl und
@@ -32,17 +38,22 @@ type Props = {
   beschriftung: string
   /** Ob der Ziffernblock gerade dieses Feld beschreibt. */
   aktiv: boolean
+  /**
+   * Führt den Ziffernblock in dieses Feld. Fehlt an der aktiven Kachel und beim
+   * Artikel, der nur ein Feld hat — dort gibt es nichts zu wechseln.
+   */
+  aufWechsel?: () => void
 }
 
-export function Wertfeld({ wert, beschriftung, aktiv }: Props) {
+export function Wertfeld({ wert, beschriftung, aktiv, aufWechsel }: Props) {
   const leer = wert === ''
 
-  return (
-    <div
-      className={`flex flex-1 flex-col items-start gap-2 rounded-ctl border-2 px-4 py-4 text-left ${
-        aktiv ? 'border-primary bg-primary-soft' : 'border-border-strong bg-surface'
-      }`}
-    >
+  const fassung = `flex flex-1 flex-col items-start gap-2 rounded-ctl border-2 px-4 py-4 text-left ${
+    aktiv ? 'border-primary bg-primary-soft' : 'border-border-strong bg-surface'
+  }`
+
+  const inhalt = (
+    <>
       <span
         aria-hidden
         className={`text-count ${
@@ -59,10 +70,22 @@ export function Wertfeld({ wert, beschriftung, aktiv }: Props) {
       >
         {beschriftung}
       </span>
+      {/* Der ganze Sachverhalt einmal als Satz — er ist zugleich die Aufschrift
+          der Schaltfläche, wo die Kachel eine ist. Ein aria-label daneben würde
+          ihn verdecken. */}
       <span className="sr-only">
         {beschriftung}: {leer ? 'kein Wert' : wert}
         {aktiv && ', wird gerade beschrieben'}
+        {!aktiv && aufWechsel !== undefined && ', zum Beschreiben antippen'}
       </span>
-    </div>
+    </>
+  )
+
+  if (aufWechsel === undefined) return <div className={fassung}>{inhalt}</div>
+
+  return (
+    <button type="button" onClick={aufWechsel} className={`tap focus-visible:fokus ${fassung}`}>
+      {inhalt}
+    </button>
   )
 }

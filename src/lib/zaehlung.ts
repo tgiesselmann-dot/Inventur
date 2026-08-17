@@ -16,6 +16,7 @@
  */
 
 import { Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
+import { passtAufText, passtZurSuche } from '@/lib/artikelsuche'
 import { gesamtEinheiten, type ZaehlbarerArtikel } from '@/lib/einheiten'
 
 /**
@@ -209,6 +210,31 @@ export function tasteAnwenden(aktuell: string, taste: Taste, dezimal: boolean): 
 }
 
 /**
+ * Getippter Freitext als Mengentext — für die Eingabefelder der Listenansicht,
+ * die an der Systemtastatur hängen und nicht am Ziffernblock.
+ *
+ * Läuft Zeichen für Zeichen durch dieselbe Regel wie eine Taste, statt sie ein
+ * zweites Mal aufzuschreiben: was am Block nicht einzugeben ist — ein Komma im
+ * Kastenfeld, eine dritte Nachkommastelle, eine fünfte Vorkommastelle — darf
+ * über die Tastatur nicht hereinkommen. Zwei Fassungen derselben Regel würden
+ * spätestens beim nächsten Zählmodus auseinanderlaufen.
+ *
+ * Der Punkt gilt dabei als Komma: auf der Zehnertastatur mancher Geräte steht
+ * nur er, und "2.5" ist im Lager unmissverständlich gemeint. Alles übrige fällt
+ * weg, statt die Eingabe abzuweisen — ein Buchstabe im Mengenfeld ist kein
+ * Fehlerfall, sondern ein Tastendruck, der nichts tut.
+ */
+export function eingabetext(roh: string, dezimal: boolean): string {
+  return [...roh].reduce((text, zeichen) => {
+    if (/^[0-9]$/.test(zeichen)) {
+      return tasteAnwenden(text, { art: 'ziffer', ziffer: zeichen }, dezimal)
+    }
+    if (zeichen === ',' || zeichen === '.') return tasteAnwenden(text, { art: 'komma' }, dezimal)
+    return text
+  }, '')
+}
+
+/**
  * Zählt den Eingabetext um `delta` hoch oder runter, für die Plus- und
  * Minus-Schaltflächen. Unter null wird nicht gezählt: ein negativer Bestand ist
  * im Lager keine Aussage, und die Umrechnung in einheiten.ts weist ihn ohnehin
@@ -251,6 +277,24 @@ export function dezimaltext(text: string): string {
  */
 export function alsEingabe(dezimal: string): string {
   return dezimal.replace('.', ',')
+}
+
+/**
+ * Ein gespeicherter Stand als Eingabetexte beider Felder — der Weg zurück in
+ * die Maske und in die Felder der Liste.
+ *
+ * `undefined` heisst "nichts gezählt" und ergibt zwei leere Texte, nicht zwei
+ * Nullen: ein leerer Wert ist ein Gedankenstrich, und eine 0 wäre die Aussage
+ * "nachgesehen, Fach ist leer".
+ */
+export function alsEingaben(
+  position: { anzahlGebinde: string; anzahlEinzeln: string } | undefined,
+): Zaehleingabe {
+  if (position === undefined) return { anzahlGebinde: '', anzahlEinzeln: '' }
+  return {
+    anzahlGebinde: alsEingabe(position.anzahlGebinde),
+    anzahlEinzeln: alsEingabe(position.anzahlEinzeln),
+  }
 }
 
 /**
@@ -336,6 +380,79 @@ export function abschnitte(artikel: readonly ZaehlArtikel[]): Abschnitt[] {
   })
 
   return blocks
+}
+
+/** Eine Zeile der Liste: der Artikel und seine Stelle in der Zählreihenfolge. */
+export type Listenzeile = {
+  artikel: ZaehlArtikel
+  /**
+   * Der Index in der Zählreihenfolge — nicht die Stelle in der gefilterten
+   * Anzeige. Er führt die Fokusansicht an den richtigen Artikel; ohne ihn
+   * spränge eine angetippte Zeile bei aktiver Suche auf den falschen.
+   */
+  index: number
+}
+
+/** Ein Abschnitt der Liste, wie ihn die Übersicht anzeigt. */
+export type Listenabschnitt = {
+  kategorie: string
+  /**
+   * Die Station im Laufweg, ab 1. Sie bleibt dieselbe, wenn eine Suche
+   * Abschnitte wegfiltert: die Nummer zeigt auf ein Regal, und aus dem
+   * neunten Halt wird durch eine Suche nicht der erste.
+   */
+  station: number
+  /** Alle Artikel des Abschnitts — auch die, die die Suche gerade verbirgt. */
+  artikel: ZaehlArtikel[]
+  /** Was anzuzeigen ist. Ohne Suche sind das alle. */
+  zeilen: Listenzeile[]
+}
+
+/**
+ * Ob ein Artikel zur Suche in der Zählliste passt.
+ *
+ * Name und Gebinde nach der gemeinsamen Regel aus artikelsuche.ts, dazu die
+ * Kategorie: wer "aperitif" tippt, meint im Lager die Gruppe und nicht einen
+ * Artikel, in dessen Namen zufällig "aperitif" steht. Weil alle Artikel eines
+ * Abschnitts dieselbe Kategorie tragen, bleibt ein so getroffener Abschnitt von
+ * allein ganz stehen.
+ *
+ * Gilt für beide Listen derselben Maske — die Artikel des Ortes und den übrigen
+ * Stamm unter "Weitere Artikel". Eine Suche, die oben Gruppen kennt und unten
+ * nicht, wäre für den Zähler dieselbe Suche mit zwei Ergebnissen.
+ */
+export function passtInZaehlliste(
+  artikel: Pick<ZaehlArtikel, 'name' | 'lieferGebindeText' | 'kategorie'>,
+  suche: string,
+): boolean {
+  return passtZurSuche(artikel, suche) || passtAufText(artikel.kategorie, suche)
+}
+
+/**
+ * Die Abschnitte der Liste, auf die Suche eingedampft.
+ *
+ * Abschnitte ohne Treffer fallen weg, ihre Stationsnummer aber nicht: die
+ * gehört dem Laufweg, nicht der Anzeige.
+ *
+ * Der Stand ("4 / 6") rechnet weiterhin über `artikel` und nicht über `zeilen`
+ * — ein Abschnitt wird durch eine Suche nicht kleiner, nur schmaler gezeigt.
+ */
+export function listenabschnitte(
+  artikel: readonly ZaehlArtikel[],
+  suche: string,
+): Listenabschnitt[] {
+  return abschnitte(artikel)
+    .map(
+      (block, stelle): Listenabschnitt => ({
+        kategorie: block.kategorie,
+        station: stelle + 1,
+        artikel: block.artikel,
+        zeilen: block.artikel
+          .map((eintrag, versatz) => ({ artikel: eintrag, index: block.ab + versatz }))
+          .filter((zeile) => passtInZaehlliste(zeile.artikel, suche)),
+      }),
+    )
+    .filter((block) => block.zeilen.length > 0)
 }
 
 export type Fortschritt = {

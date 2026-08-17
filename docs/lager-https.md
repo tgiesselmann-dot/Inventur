@@ -1,5 +1,13 @@
 # HTTPS fürs Lager-Handy
 
+> Für **Android** gilt derselbe Weg mit zwei Abweichungen: Chrome löst
+> `.local`-Namen nicht auf, das Gerät braucht also die IP-Adresse (und damit
+> ihren Eintrag in `allowedDevOrigins`). Und die CA-Datei muss zum Installieren
+> auf `.crt` enden — eine umbenannte Kopie von `lager-ca.pem` genügt.
+> Installiert wird sie unter Einstellungen → Sicherheit → Verschlüsselung &
+> Anmeldedaten → Zertifikat installieren → CA-Zertifikat; das Gerät verlangt
+> dafür eine eingerichtete Bildschirmsperre.
+
 Die App läuft auf dem Mac; das iPhone erreicht sie im selben WLAN. Damit Safari
 die App als vollwertige Home-Bildschirm-App behandelt (Service Worker,
 Offline-Speicher der Zählmaske), braucht die Verbindung HTTPS mit einem
@@ -39,6 +47,12 @@ danach im Terminal, z. B. `https://macbook-pro-von-tim.local:8443`.
 - **„Server nicht gefunden“**: iPhone und Mac müssen im selben WLAN sein; der
   `.local`-Name kommt über Bonjour. Zur Not die IP-Adresse aus der
   Terminal-Ausgabe verwenden — sie steht mit im Zertifikat.
+- **Nach einem WLAN-Wechsel**: nichts zu tun. `npm run lager` merkt beim Start,
+  dass die neue Adresse im Zertifikat fehlt, und stellt es nach — mit derselben
+  Zertifikatsstelle, die Profile auf den Geräten bleiben also gültig. Bisherige
+  Adressen bleiben stehen, Lager und Zuhause dürfen nebeneinander gelten. Nur
+  `allowedDevOrigins` in `next.config.ts` muss von Hand mit; die Tür weist im
+  Protokoll darauf hin, sobald der Eintrag fehlt.
 - **Zertifikatswarnung trotz Profil**: Schritt 3 (Vertrauenseinstellungen)
   wurde übersprungen.
 - **Nach ~2 Jahren**: Das Server-Zertifikat ist 820 Tage gültig (Apples

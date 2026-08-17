@@ -28,7 +28,14 @@ export function Statuszeile({
   /** Stösst den Versand von Hand an — gezeigt nur, wenn der Server abgelehnt hat. */
   aufErneut?: () => void
 }) {
-  const stockt = status.art === 'abgelehnt' || status.art === 'abgemeldet'
+  // "Ungesichert" ist zweierlei: liegt nichts an, ist es eine Warnung auf
+  // Vorrat (attention). Liegt etwas an, hängt es allein am Bildschirm — dann
+  // ist es dasselbe Rot wie eine Ablehnung, denn ein geschlossener Tab wäre
+  // hier ein echter Verlust.
+  const stockt =
+    status.art === 'abgelehnt' ||
+    status.art === 'abgemeldet' ||
+    (status.art === 'ungesichert' && status.offen > 0)
   const punkt =
     status.art === 'gespeichert' ? 'bg-confirm' : stockt ? 'bg-danger' : 'bg-attention'
   const ton =

@@ -26,6 +26,7 @@ import { useActionState, useState } from 'react'
 import { bestellwerttext, mengensumme, type Bestellzeile } from '@/lib/bestellung'
 import { wertGebindeCent } from '@/lib/einheiten'
 import { alsEuro } from '@/lib/wareneingang'
+import { gebindeBeschriftung } from '@/lib/zaehlung'
 import { Mengenfeld } from '@/ui/mengenfeld'
 import { Schaltflaeche } from '@/ui/schaltflaeche'
 
@@ -164,6 +165,7 @@ export function Positionsmaske({ bestellungId, zeilen, aenderbar, versendet }: P
                   <th className="py-2 pr-3 font-medium">Artikel</th>
                   <Kopf>Bestellt</Kopf>
                   {mitVorschlag && <Kopf className="nur-schirm">Vor&shy;schlag</Kopf>}
+                  {mitVorschlag && <Kopf className="nur-schirm">Bestand</Kopf>}
                   <Kopf>je Gebinde</Kopf>
                   <Kopf>Wert</Kopf>
                   {mitLieferung && <Kopf>Geliefert</Kopf>}
@@ -189,6 +191,7 @@ export function Positionsmaske({ bestellungId, zeilen, aenderbar, versendet }: P
                     {gesamt.positionen === 1 ? '1 Position' : `${gesamt.positionen} Positionen`}
                   </td>
                   <td className="py-2 pl-3 text-right tabular-nums">{gesamt.gebinde}</td>
+                  {mitVorschlag && <td className="nur-schirm" />}
                   {mitVorschlag && <td className="nur-schirm" />}
                   <td />
                   <td className="py-2 pl-3 text-right tabular-nums">
@@ -349,6 +352,10 @@ function Tabellenzeile({
           mindestens={zeile.gesperrt ? 1 : 0}
           gesperrt={!aenderbar}
         />
+        {/* "Kästen"/"Fässer"/… — damit die Zahl nie als Flaschen gelesen wird. */}
+        <span className="block text-xs text-text-muted">
+          {gebindeBeschriftung(zeile.artikel.gebindeart)}
+        </span>
         <Vermerk zeile={zeile} menge={menge} aenderbar={aenderbar} />
       </td>
       {mitVorschlag && (
@@ -359,6 +366,16 @@ function Tabellenzeile({
             <span className={abweichend ? 'text-attention-text' : 'text-text-muted'}>
               {zeile.vorschlagGebinde}
             </span>
+          )}
+        </td>
+      )}
+      {mitVorschlag && (
+        <td className="nur-schirm py-2 pl-3 text-right tabular-nums">
+          {/* In Einheiten, wie auf der Vorschlagsseite — nicht in Gebinden. */}
+          {zeile.bestand === null ? (
+            <span className="text-text-muted">—</span>
+          ) : (
+            <span className="text-text-muted">{zeile.bestand}</span>
           )}
         </td>
       )}
@@ -421,6 +438,10 @@ function Karte({
             mindestens={zeile.gesperrt ? 1 : 0}
             gesperrt={!aenderbar}
           />
+          {/* Dieselbe Auskunft wie in der Tabelle: die Zahl zählt Gebinde. */}
+          <span className="block text-xs text-text-muted">
+            {gebindeBeschriftung(zeile.artikel.gebindeart)}
+          </span>
           <Vermerk zeile={zeile} menge={menge} aenderbar={aenderbar} />
         </span>
       </div>
@@ -430,6 +451,7 @@ function Karte({
       <p className="mt-1 text-xs text-text-muted tabular-nums">
         {menge === 0 ? '—' : cent === null ? 'nicht bewertbar' : alsEuro(cent)}
         {zeile.vorschlagGebinde !== null && ` · Vorschlag ${zeile.vorschlagGebinde}`}
+        {zeile.bestand !== null && ` · Bestand ${zeile.bestand}`}
         {zeile.geliefert !== null && ` · ${zeile.geliefert} geliefert`}
       </p>
     </li>

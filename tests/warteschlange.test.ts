@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  anzahlOffen,
   geaendert,
   istOffen,
   nachVersand,
+  offeneJeOrt,
   sammelStatus,
   schluessel,
   statusText,
@@ -50,6 +52,44 @@ describe('istOffen', () => {
 
   it('sieht einen nach dem Versand geänderten Eintrag wieder als offen', () => {
     expect(istOffen(eintrag({ artikelId: 'a', stand: 4, gesendeterStand: 3 }))).toBe(true)
+  })
+})
+
+describe('anzahlOffen', () => {
+  it('zählt nur, was noch zum Server muss', () => {
+    expect(
+      anzahlOffen([
+        eintrag({ artikelId: 'a', stand: 2, gesendeterStand: null }),
+        eintrag({ artikelId: 'b', stand: 1, gesendeterStand: 1 }),
+        eintrag({ artikelId: 'c', stand: 3, gesendeterStand: 2 }),
+      ]),
+    ).toBe(2)
+  })
+
+  it('meldet bei leerer Warteschlange null', () => {
+    expect(anzahlOffen([])).toBe(0)
+  })
+})
+
+describe('offeneJeOrt', () => {
+  it('zählt die offenen Werte je Lagerort und lässt fertige Orte weg', () => {
+    // Der Fall, für den die Sperren gebaut sind: die Theke ist durch, die
+    // Kühlcontainer-Werte liegen noch auf dem Gerät — und wer abschliessen
+    // will, soll lesen, in welches Lager er dafür zurückmuss.
+    const je = offeneJeOrt([
+      eintrag({ lagerortId: THEKE, artikelId: 'a', stand: 1, gesendeterStand: 1 }),
+      eintrag({ lagerortId: KUEHL, artikelId: 'a', stand: 1, gesendeterStand: null }),
+      eintrag({ lagerortId: KUEHL, artikelId: 'b', stand: 2, gesendeterStand: 1 }),
+    ])
+
+    expect(je.get(THEKE)).toBeUndefined()
+    expect(je.get(KUEHL)).toBe(2)
+    expect(je.size).toBe(1)
+  })
+
+  it('gibt ohne offene Werte eine leere Karte', () => {
+    expect(offeneJeOrt([eintrag({ artikelId: 'a', stand: 1, gesendeterStand: 1 })]).size).toBe(0)
+    expect(offeneJeOrt([]).size).toBe(0)
   })
 })
 
@@ -278,6 +318,31 @@ describe('sammelStatus', () => {
     expect(sammelStatus([fertig], false, 'abgelehnt')).toEqual({ art: 'gespeichert' })
     expect(sammelStatus([fertig], false, 'abgemeldet')).toEqual({ art: 'gespeichert' })
   })
+
+  it('meldet den fehlenden Gerätespeicher auch dann, wenn alles angekommen ist', () => {
+    // "Gespeichert" heisst: leg das Handy weg. Ohne Browserspeicher stimmt das
+    // nur, solange die Seite offen bleibt — und das muss dort stehen.
+    expect(sammelStatus([fertig], false, null, true)).toEqual({ art: 'ungesichert', offen: 0 })
+  })
+
+  it('zählt beim fehlenden Gerätespeicher die Werte, die nur am Bildschirm hängen', () => {
+    expect(sammelStatus([offen, fertig], false, null, true)).toEqual({
+      art: 'ungesichert',
+      offen: 1,
+    })
+    // Auch ohne Netz bleibt es dieselbe Nachricht: dass die Werte auf Netz
+    // warten, ist hier die kleinere Hälfte der Wahrheit.
+    expect(sammelStatus([offen], true, null, true)).toEqual({ art: 'ungesichert', offen: 1 })
+  })
+
+  it('lässt der Ablehnung den Vortritt vor dem fehlenden Speicher', () => {
+    // An der Ablehnung hängt eine Handlung ("Erneut", "Anmelden"), am fehlenden
+    // Speicher keine.
+    expect(sammelStatus([offen], false, 'abgemeldet', true)).toEqual({
+      art: 'abgemeldet',
+      offen: 1,
+    })
+  })
 })
 
 describe('statusText', () => {
@@ -303,6 +368,18 @@ describe('statusText', () => {
     )
     expect(statusText({ art: 'abgemeldet', offen: 7 })).toBe(
       'Anmeldung abgelaufen · 7 Werte liegen im Gerät',
+    )
+  })
+
+  it('unterscheidet beim fehlenden Speicher zwischen angekommen und offen', () => {
+    // Ohne offene Werte ist alles beim Server und die Seite darf zu; mit
+    // offenen Werten hängt die Zählung am Bildschirm.
+    expect(statusText({ art: 'ungesichert', offen: 0 })).toBe('Ohne Gerätespeicher · gespeichert')
+    expect(statusText({ art: 'ungesichert', offen: 1 })).toBe(
+      'Ohne Gerätespeicher · 1 Wert nur im Bildschirm',
+    )
+    expect(statusText({ art: 'ungesichert', offen: 5 })).toBe(
+      'Ohne Gerätespeicher · 5 Werte nur im Bildschirm',
     )
   })
 })

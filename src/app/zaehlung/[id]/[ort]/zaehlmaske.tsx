@@ -18,7 +18,9 @@
  * gibt es keine Erfahrung, dann führt sie durch den ganzen Stamm.
  *
  * Der Weg durch die Artikel folgt `sortierung`, dem Laufweg im Lager. Die
- * Übersicht ist der Ausweg daraus: springen, überspringen, Lücken finden.
+ * Übersicht ist der Ausweg daraus: springen, überspringen, Lücken finden — und
+ * für die zwei, drei Zeilen, die man nachträgt, auch gleich eintragen, ohne
+ * dafür in die Fokusansicht zu wechseln.
  *
  * Zwei Berührungen im Normalfall: eine Ziffer (der Wert steht und ist
  * gespeichert), dann "weiter". Wer an einem leeren Fach nichts eingibt,
@@ -29,12 +31,16 @@
  * geschieht eine Ebene höher in der Ortswahl — ein Lager, das niemand angefasst
  * hat, sieht in der Schwundrechnung sonst aus wie verschwundene Ware.
  *
- * Alles Auslösende liegt im unteren Drittel, mit genau einer Ausnahme: "Liste"
- * im Kopf, bewusst weit weg vom Daumen, damit sie nicht versehentlich getroffen
- * wird und die Fokusansicht wegspringt. Alles darüber ist Anzeige — die
- * Wertkacheln ebenso wie der grüne Balken über dem Block. Zwischen den beiden
- * Kacheln wechselt die Wechseltaste im Ziffernblock, gemeldet wird in der
- * Liste, wo die Schaltfläche im Fuss steht.
+ * Alles, was zum Zählen nötig ist, liegt im unteren Drittel: die Ziffern, der
+ * Feldwechsel, "weiter". Darüber steht nichts, was man erreichen *muss* — die
+ * "Liste" im Kopf ist bewusst weit weg vom Daumen, damit sie nicht versehentlich
+ * getroffen wird und die Fokusansicht wegspringt.
+ *
+ * Zwei Flächen oben reagieren trotzdem auf einen Tipp, beide als zweiter Weg
+ * neben einem unteren: die ruhende Wertkachel führt in ihr Feld wie die
+ * Wechseltaste im Block. Wer auf „lose Flaschen" schaut, tippt dorthin, statt
+ * unten zu zielen; wer das Handy in einer Hand hält, nimmt weiter die Taste.
+ * Gemeldet wird nach wie vor in der Liste, wo die Schaltfläche im Fuss steht.
  */
 
 import { useRouter } from 'next/navigation'
@@ -42,7 +48,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { ZaehlungStatus } from '@/generated/prisma/enums'
 import {
-  alsEingabe,
+  alsEingaben,
   alsPosition,
   felder,
   fortschritt,
@@ -164,7 +170,20 @@ export function Zaehlmaske({
   const [entwurf, setEntwurf] = useState<Zaehleingabe | null>(null)
   /** true, wenn die Fertigmeldung nicht durchkam. */
   const [meldungFehlt, setMeldungFehlt] = useState(false)
+  /**
+   * Wie viele Werte bei der letzten Fertigmeldung noch auf dem Gerät lagen —
+   * 0, wenn nichts im Weg stand. Die Meldung wurde dann nicht abgeschickt.
+   */
+  const [geraetOffen, setGeraetOffen] = useState(0)
   const [meldet, setMeldet] = useState(false)
+  /**
+   * Suche und Klappstand der Liste. Sie stehen hier und nicht in der Liste,
+   * weil die beim Wechsel in die Fokusansicht abgebaut wird: wer nach
+   * "aperitif" sucht, eine Zeile antippt und sie zählt, soll beim Zurückkommen
+   * dieselben vier Stationen vorfinden und nicht wieder neunundneunzig Zeilen.
+   */
+  const [suche, setSuche] = useState('')
+  const [zugeklappt, setZugeklappt] = useState<ReadonlySet<string>>(new Set())
 
   const aktuell = liste[index]
   const meineFelder = useMemo(() => (aktuell ? felder(aktuell) : []), [aktuell])
@@ -173,15 +192,11 @@ export function Zaehlmaske({
   const anderesFeld = meineFelder.find((eintrag) => eintrag.name !== feld?.name)
 
   /** Der gespeicherte Wert des aktuellen Artikels, als Eingabetext. */
-  const gespeichert = useMemo((): Zaehleingabe => {
-    if (aktuell === undefined) return LEER
-    const eintrag = stand.eintraege.get(aktuell.id)
-    if (eintrag === undefined) return LEER
-    return {
-      anzahlGebinde: alsEingabe(eintrag.anzahlGebinde),
-      anzahlEinzeln: alsEingabe(eintrag.anzahlEinzeln),
-    }
-  }, [aktuell, stand.eintraege])
+  const gespeichert = useMemo(
+    (): Zaehleingabe =>
+      aktuell === undefined ? LEER : alsEingaben(stand.eintraege.get(aktuell.id)),
+    [aktuell, stand.eintraege],
+  )
 
   const werte = entwurf ?? gespeichert
 
@@ -193,6 +208,21 @@ export function Zaehlmaske({
       stand.setzen(aktuell.id, alsPosition(aktuell, neu))
     },
     [aktuell, stand],
+  )
+
+  /**
+   * Derselbe Weg für einen beliebigen Artikel — den Feldern der Liste.
+   *
+   * Kein zweiter Speicherweg neben `uebernehmen`: die Eingabe geht durch
+   * denselben `stand.setzen`, und damit gelten Gerätespeicher, Warteschlange,
+   * Statuspunkt und die Ruhe vor dem Versand unverändert. Nur der Entwurf des
+   * aktuellen Artikels bleibt hier aussen vor — der gehört der Fokusansicht.
+   */
+  const wertSetzen = useCallback(
+    (eintrag: ZaehlArtikel, neu: Zaehleingabe) => {
+      stand.setzen(eintrag.id, alsPosition(eintrag, neu))
+    },
+    [stand],
   )
 
   const gehZu = useCallback((ziel: number) => {
@@ -279,11 +309,22 @@ export function Zaehlmaske({
   async function beiFertigmeldung() {
     setMeldet(true)
     setMeldungFehlt(false)
+    setGeraetOffen(0)
     try {
       // Erst alles Ausstehende loswerden: ein Lager als fertig zu melden,
       // während seine Werte noch auf dem Gerät liegen, wäre eine Zusage, die
       // der Server nicht einlösen kann.
       await stand.senden()
+      // senden() scheitert leise — kein Netz, eine Ablehnung, ein schon
+      // laufender Versand. Liegt danach noch etwas, wird nicht gemeldet: eine
+      // Fertigmeldung, die an der Lagertür durchrutscht, während der Stapel es
+      // nicht tat, macht aus liegengebliebenen Werten Schein-Schwund — und der
+      // Abschluss sperrt das Nachsenden mit 409.
+      const liegtNoch = stand.offen()
+      if (liegtNoch > 0) {
+        setGeraetOffen(liegtNoch)
+        return
+      }
       const antwort = await fetch(`/api/zaehlung/${zaehlungId}/lager/${lagerortId}/fertig`, {
         method: 'POST',
       })
@@ -336,7 +377,14 @@ export function Zaehlmaske({
           <span className="-my-2 flex shrink-0">
             <Schaltflaeche
               art="sekundaer"
-              onClick={() => setAnsicht(ansicht === 'fokus' ? 'uebersicht' : 'fokus')}
+              onClick={() => {
+                // Der Entwurf gehört der Fokusansicht und ist beim Wechsel
+                // hinfällig: wer denselben Artikel in der Liste beschreibt,
+                // hätte beim Zurückkommen sonst den alten Text vor sich — und
+                // der nächste Tastendruck ginge von ihm aus statt vom Wert.
+                setEntwurf(null)
+                setAnsicht(ansicht === 'fokus' ? 'uebersicht' : 'fokus')
+              }}
             >
               {ansicht === 'fokus' ? 'Liste' : 'Zählen'}
             </Schaltflaeche>
@@ -362,11 +410,17 @@ export function Zaehlmaske({
           erfasst={stand.erfasst}
           offen={offen}
           meldungFehlt={meldungFehlt}
+          geraetOffen={geraetOffen}
           alleErfasst={alleErfasst}
           abgeschlossen={abgeschlossen}
           ortswahlZiel={`/zaehlung/${zaehlungId}`}
           meldet={meldet}
+          suche={suche}
+          aufSuche={setSuche}
+          zugeklappt={zugeklappt}
+          aufZugeklappt={setZugeklappt}
           aufArtikel={gehZu}
+          aufWert={wertSetzen}
           aufAufnehmen={aufnehmen}
           aufFertigmeldung={() => void beiFertigmeldung()}
         />
@@ -394,6 +448,12 @@ export function Zaehlmaske({
                     wert={werte[eintrag.name]}
                     beschriftung={eintrag.beschriftung}
                     aktiv={eintrag.name === feld.name}
+                    // Die ruhende Kachel führt in ihr Feld, die aktive bleibt
+                    // Anzeige. Beim Artikel mit einem Feld ist dieses immer das
+                    // aktive — dort entsteht so von allein keine Schaltfläche.
+                    aufWechsel={
+                      eintrag.name === feld.name ? undefined : () => setAktivesFeld(eintrag.name)
+                    }
                   />
                 ))}
               </div>

@@ -398,6 +398,16 @@ export type Bestellzeile = {
    * abgeschlossene Zählung gibt es keinen Vergleichswert, und 0 wäre einer.
    */
   vorschlagGebinde: number | null
+  /**
+   * Fortgeschriebener Bestand von heute — Zählung plus geprüfte Lieferungen
+   * minus Verkäufe — als Text in **Liefergebinden**, ungerundet ("2,63" Kästen):
+   * dieselbe Sprache wie Bestellmenge und Vorschlag daneben. Die Vorschlagsseite
+   * zeigt denselben Bestand in Einheiten, weil dort die ganze Tabelle in
+   * Einheiten rechnet. `null` ohne Rechengrundlage oder wenn der Artikel bei der
+   * letzten Zählung fehlte: der Strich sagt "unbekannt", eine 0 behauptete ein
+   * leeres Regal.
+   */
+  bestand: string | null
 }
 
 /**
