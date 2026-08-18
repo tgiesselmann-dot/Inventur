@@ -15,7 +15,8 @@
 
 import { notFound, redirect } from 'next/navigation'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBenutzer } from '@/lib/anmeldung'
+import { darfPreiseSehen } from '@/lib/berechtigungen'
 import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
 import type { Abweichungseingabe, ErfassungsArtikel, ErfassungsPosition } from '@/lib/wareneingang'
@@ -34,7 +35,11 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]/erfa
   if (!istKennung(id)) notFound()
 
   // Über Id und Betrieb gesucht: eine fremde Lieferung ist damit nicht gefunden.
-  const betrieb = await aktuellerBetrieb()
+  const benutzer = await pflichtBenutzer()
+  const betrieb = benutzer.betrieb
+  // Ohne Preissicht werden die Einkaufspreise schon hier genullt — was der
+  // Server nicht mitschickt, steht auch in keinem Seitenquelltext.
+  const mitPreisen = darfPreiseSehen(benutzer.rolle)
   const lieferung = await prisma.lieferung.findFirst({
     where: { id, betriebId: betrieb.id },
     include: {
@@ -58,13 +63,17 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]/erfa
     where: { betriebId: lieferung.betriebId, aktiv: true },
     orderBy: { sortierung: 'asc' },
   })
-  const stamm: ErfassungsArtikel[] = stammRoh.map(alsErfassungsArtikel)
+  const stamm: ErfassungsArtikel[] = stammRoh.map((artikel) =>
+    alsErfassungsArtikel(mitPreisen ? artikel : { ...artikel, ekPreisCent: null }),
+  )
 
   const positionen: ErfassungsPosition[] = lieferung.positionen.map((position) => {
     const bestellt = position.bestellposition
     return {
       id: position.id,
-      artikel: alsErfassungsArtikel(position.artikel),
+      artikel: alsErfassungsArtikel(
+        mitPreisen ? position.artikel : { ...position.artikel, ekPreisCent: null },
+      ),
       bestellt: bestellt?.anzahlGebinde.toString() ?? null,
       bestellpositionId: position.bestellpositionId,
       bestellterArtikel:
@@ -77,7 +86,7 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]/erfa
             },
       lieferschein: position.anzahlGebindeLieferschein.toString(),
       tatsaechlich: position.anzahlGebindeTatsaechlich.toString(),
-      ekPreisCentLieferschein: position.ekPreisCentLieferschein,
+      ekPreisCentLieferschein: mitPreisen ? position.ekPreisCentLieferschein : null,
       nachlieferungZugesagtBis:
         position.nachlieferungZugesagtBis?.toISOString().slice(0, 10) ?? null,
       abweichungen: position.abweichungen.map(
@@ -95,6 +104,7 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]/erfa
       lieferant={lieferung.lieferant}
       belegNr={lieferung.belegNr}
       datum={lieferung.datum.toISOString().slice(0, 10)}
+      mitPreisen={mitPreisen}
       positionen={positionen}
       stamm={stamm}
     />

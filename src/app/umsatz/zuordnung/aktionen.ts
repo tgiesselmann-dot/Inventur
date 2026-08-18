@@ -26,7 +26,7 @@ import { revalidatePath } from 'next/cache'
 
 import { Decimal } from '@prisma/client/runtime/client'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { prisma } from '@/lib/prisma'
 
 import { type Aktionszustand } from '../../aktionszustand'
@@ -95,7 +95,7 @@ export async function zuordnungSpeichern(
 
     // Über den Betrieb gesucht, nicht bloss über die Id: die Id kommt aus einem
     // Formular, und ein Formular kann jede Id tragen.
-    const betrieb = await aktuellerBetrieb()
+    const { betrieb } = await pflichtBetriebsleiter()
     const kassenartikel = await prisma.kassenartikel.findFirst({
       where: { id, betriebId: betrieb.id },
     })
@@ -178,7 +178,7 @@ export async function sammelAktion(
 
     // Der Betrieb steht in jeder Bedingung darunter: die Ids kommen aus der
     // Auswahl im Client, und die kann geschickt werden, wie sie will.
-    const betrieb = await aktuellerBetrieb()
+    const { betrieb } = await pflichtBetriebsleiter()
     const gefunden = await prisma.kassenartikel.count({
       where: { betriebId: betrieb.id, id: { in: eindeutig } },
     })

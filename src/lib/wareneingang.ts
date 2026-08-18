@@ -489,8 +489,13 @@ export function fehlbetragCent(position: PruefPosition): number | null {
  * Ein fehlender Preis wird benannt und nicht auf 0,00 EUR gerundet; ein Betrag
  * von 0 — eine Überlieferung, eine zugesagte Nachlieferung — bleibt weg, denn
  * er ist keine Forderung.
+ *
+ * `mitBetrag = false` ist die Fassung für Rollen ohne Preissicht
+ * (darfPreiseSehen in src/lib/berechtigungen.ts): der Satz nennt die Menge und
+ * schweigt über Geld — auch über "nicht bewertbar", denn das wäre die Meldung
+ * einer Lücke, die diese Rolle gar nicht sehen soll.
  */
-export function abweichungstext(position: PruefPosition): string | null {
+export function abweichungstext(position: PruefPosition, mitBetrag = true): string | null {
   const abweichung = differenz(position)
   if (abweichung.isZero()) return null
 
@@ -501,9 +506,11 @@ export function abweichungstext(position: PruefPosition): string | null {
       : `${menge} zu viel`,
   ]
 
-  const betrag = fehlbetragCent(position)
-  if (betrag === null) teile.push('nicht bewertbar')
-  else if (betrag > 0) teile.push(alsEuro(betrag))
+  if (mitBetrag) {
+    const betrag = fehlbetragCent(position)
+    if (betrag === null) teile.push('nicht bewertbar')
+    else if (betrag > 0) teile.push(alsEuro(betrag))
+  }
 
   if (position.abweichungen.some((eintrag) => eintrag.art === Abweichungsart.BRUCH)) {
     teile.push('mit Bruch')
@@ -663,21 +670,30 @@ export function umfangtext(summe: Zusammenfassung, leergut?: Leergutzusammenfass
  * Mit `leergut` zählt offenes Pfand zum Betrag — genau einmal, hier und in
  * `fehlbetragtext` aus derselben Summe. Weicht nur das Leergut ab, nennt der
  * Kopf es beim Namen statt "ohne Abweichung" zu behaupten.
+ *
+ * `mitBetrag = false` für Rollen ohne Preissicht: die Zahl der Abweichungen
+ * bleibt — sie ist Prüfarbeit, kein Geld —, jeder Betrag und jedes "nicht
+ * bewertbar" fällt weg.
  */
-export function bilanztext(summe: Zusammenfassung, leergut?: Leergutzusammenfassung): string {
+export function bilanztext(
+  summe: Zusammenfassung,
+  leergut?: Leergutzusammenfassung,
+  mitBetrag = true,
+): string {
   const pfandCent = leergut?.offenesPfandCent ?? 0
   const pfandUnbewertbar = leergut?.pfandUnbewertbar ?? 0
   const betrag = summe.fehlbetragCent + pfandCent
 
   if (summe.abweichende === 0) {
-    if (pfandCent > 0) return `Leergut · ${alsEuro(pfandCent)}`
-    if (pfandUnbewertbar > 0) return 'Leergut · nicht bewertbar'
+    if (pfandCent > 0) return mitBetrag ? `Leergut · ${alsEuro(pfandCent)}` : 'Leergut weicht ab'
+    if (pfandUnbewertbar > 0) return mitBetrag ? 'Leergut · nicht bewertbar' : 'Leergut weicht ab'
     return 'ohne Abweichung'
   }
 
   const zahl =
     summe.abweichende === 1 ? '1 Abweichung' : `${summe.abweichende} Abweichungen`
 
+  if (!mitBetrag) return zahl
   if (betrag > 0) return `${zahl} · ${alsEuro(betrag)}`
   return summe.unbewertbar > 0 || pfandUnbewertbar > 0 ? `${zahl} · nicht bewertbar` : zahl
 }

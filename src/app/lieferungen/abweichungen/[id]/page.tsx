@@ -23,7 +23,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { Abweichungsstatus } from '@/generated/prisma/enums'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsDatumstext, alsKurzdatum, alsZeitpunktstext } from '@/lib/datum'
 import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
@@ -77,7 +77,7 @@ export default async function Page({ params }: PageProps<'/lieferungen/abweichun
   if (!istKennung(id)) notFound()
 
   // Über Id und Betrieb gesucht: eine fremde Abweichung ist damit nicht gefunden.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const abweichung = await prisma.abweichung.findFirst({
     where: { id, betriebId: betrieb.id },
     include: {

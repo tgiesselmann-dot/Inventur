@@ -3,7 +3,7 @@
  * Vorgaben. Nach dem Speichern führt die Aktion auf die neue Detailseite.
  */
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { NEUER_ARTIKEL, kategorien } from '@/lib/artikelstamm'
 import { prisma } from '@/lib/prisma'
 
@@ -12,7 +12,7 @@ import { Artikelformular } from '../formular'
 export const dynamic = 'force-dynamic'
 
 export default async function Page() {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const alle = await prisma.artikel.findMany({
     where: { betriebId: betrieb.id },
     orderBy: { sortierung: 'asc' },

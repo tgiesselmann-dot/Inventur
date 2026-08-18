@@ -21,6 +21,7 @@
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
 
+import { istBetriebsleiter } from '@/lib/berechtigungen'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
@@ -158,4 +159,23 @@ export async function pflichtBenutzer(): Promise<Angemeldet> {
   await aktuellerBetrieb()
   // Unerreichbar: `aktuellerBetrieb` leitet in jedem anderen Fall um.
   throw new Error('Kein angemeldeter Benutzer')
+}
+
+/**
+ * Der angemeldete Betriebsleiter, oder eine Umleitung.
+ *
+ * Der Türwächter der gesperrten Bereiche: Umsatz, Auswertung, Bestellungen,
+ * Stammdaten und die Preisseiten des Wareneingangs rufen ihn als erste Zeile —
+ * in der Seite wie in jeder Server Action, denn eine Action ist über das Netz
+ * auch ohne ihre Seite erreichbar. Ein Mitarbeiter landet auf der Startseite;
+ * dort steht alles, was ihn angeht. Welche Wege offen sind, sagt
+ * src/lib/berechtigungen.ts.
+ *
+ * Nur in Server Components und Server Actions aufrufen — `redirect` wirft.
+ * API-Routen prüfen stattdessen `istBetriebsleiter` und antworten 403.
+ */
+export async function pflichtBetriebsleiter(): Promise<Angemeldet> {
+  const benutzer = await pflichtBenutzer()
+  if (!istBetriebsleiter(benutzer.rolle)) redirect('/')
+  return benutzer
 }

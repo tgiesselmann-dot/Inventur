@@ -100,6 +100,7 @@ const LEERGUT_TON: Record<Leergutzustand, Ton> = {
 export function Liste({
   positionen,
   leergut,
+  mitPreisen,
   mitBestellung,
   geprueft,
   summe,
@@ -112,6 +113,8 @@ export function Liste({
 }: {
   positionen: PruefPosition[]
   leergut: Leergutzeile[]
+  /** Ohne Preissicht schweigt die Liste über Beträge — siehe Pruefmaske. */
+  mitPreisen: boolean
   mitBestellung: boolean
   geprueft: boolean
   summe: Zusammenfassung
@@ -128,7 +131,7 @@ export function Liste({
   return (
     <>
       <div className="flex flex-1 flex-col overflow-y-auto bg-surface">
-        {summe.unbewertbar > 0 && (
+        {mitPreisen && summe.unbewertbar > 0 && (
           <p className="border-b border-border px-4 py-3 text-sm text-text-muted">
             {summe.unbewertbar === 1
               ? '1 Abweichung ohne hinterlegten Preis — sie ist nicht in der Summe enthalten.'
@@ -157,6 +160,7 @@ export function Liste({
                 <Zeile
                   key={position.id}
                   position={position}
+                  mitPreisen={mitPreisen}
                   mitBestellung={mitBestellung}
                   geprueft={geprueft}
                   aufKlick={() => aufZeile(position.id)}
@@ -245,18 +249,23 @@ function Hinzufuegen({ aufKlick }: { aufKlick: () => void }) {
  */
 function Zeile({
   position,
+  mitPreisen,
   mitBestellung,
   geprueft,
   aufKlick,
 }: {
   position: PruefPosition
+  mitPreisen: boolean
   mitBestellung: boolean
   geprueft: boolean
   aufKlick: () => void
 }) {
   const ton = TON[zeilenstand(position)]
-  const abweichung = abweichungstext(position)
-  const preis = preisabweichungstext(position)
+  const abweichung = abweichungstext(position, mitPreisen)
+  // Ohne Preisdaten gibt es keine Preisabweichung — der Aufruf bleibt trotzdem
+  // hinter dem Flag, damit die Zeile nie einen Betrag zeigt, den ein anderer
+  // Weg hereinreicht.
+  const preis = mitPreisen ? preisabweichungstext(position) : null
 
   return (
     <li>

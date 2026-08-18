@@ -59,6 +59,14 @@ type Props = {
   datum: string
   geprueft: boolean
   fahrerName: string | null
+  /**
+   * Ob der Angemeldete Preise sehen darf (darfPreiseSehen in
+   * src/lib/berechtigungen.ts). Ohne Preissicht kommen die Daten schon ohne
+   * Einkaufspreise vom Server — dieses Flag lässt zusätzlich die Beträge und
+   * Preisfelder aus den Ansichten verschwinden, statt überall "nicht
+   * bewertbar" zu behaupten.
+   */
+  mitPreisen: boolean
   mitBestellung: boolean
   positionen: PruefPosition[]
   leergut: Leergutzeile[]
@@ -318,8 +326,9 @@ export function Pruefmaske(props: Props) {
         setGeprueft(true)
         setFehler(null)
         // Preisabweichungen werden nicht an der Rampe entschieden — der
-        // Nachbildschirm übernimmt, sobald der Fahrer abgefertigt ist.
-        if (summe.preisabweichungen > 0) {
+        // Nachbildschirm übernimmt, sobald der Fahrer abgefertigt ist. Ohne
+        // Preissicht gibt es weder Preisabweichungen noch den Bildschirm.
+        if (props.mitPreisen && summe.preisabweichungen > 0) {
           router.push(`/lieferungen/${props.lieferungId}/preise`)
           return
         }
@@ -395,7 +404,7 @@ export function Pruefmaske(props: Props) {
                 bilanzbetont(summe, leergutSumme) ? 'text-danger-text' : 'text-text-muted'
               }`}
             >
-              {bilanztext(summe, leergutSumme)}
+              {bilanztext(summe, leergutSumme, props.mitPreisen)}
             </p>
           </div>
         </div>
@@ -423,6 +432,7 @@ export function Pruefmaske(props: Props) {
         <Zeilenmaske
           key={offeneZeile.id}
           position={offeneZeile}
+          mitPreisen={props.mitPreisen}
           mitBestellung={props.mitBestellung}
           gesperrt={geprueft}
           aufFertig={() => setAnsicht({ art: 'liste' })}
@@ -464,6 +474,7 @@ export function Pruefmaske(props: Props) {
         <Bestaetigung
           summe={summe}
           leergut={leergutSumme}
+          mitPreisen={props.mitPreisen}
           beleg={beleg}
           sendet={sendet}
           aufBeleg={setBeleg}
@@ -475,6 +486,7 @@ export function Pruefmaske(props: Props) {
         <Liste
           positionen={positionen}
           leergut={leergut}
+          mitPreisen={props.mitPreisen}
           mitBestellung={props.mitBestellung}
           geprueft={geprueft}
           summe={summe}

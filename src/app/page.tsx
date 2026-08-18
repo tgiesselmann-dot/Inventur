@@ -22,6 +22,7 @@
 
 import { ZaehlungStatus } from '@/generated/prisma/enums'
 import { pflichtBenutzer } from '@/lib/anmeldung'
+import { istBetriebsleiter, punkteFuerRolle, sichtbareBereiche } from '@/lib/berechtigungen'
 import { bestandswerttext, schwundquotentext } from '@/lib/auswertung'
 import { letzteKennzahlen, type Letztestand } from '@/lib/auswertung-daten'
 import { alsDatumstext, alsKurzdatum, alsLangdatum, heute, kalenderwoche } from '@/lib/datum'
@@ -69,6 +70,10 @@ const LISTE = 'flex-col gap-tapgap'
 export default async function Page() {
   const benutzer = await pflichtBenutzer()
   const betrieb = benutzer.betrieb
+  // Bestandswert und Schwund sind Geld — sie erscheinen nur der
+  // Betriebsleitung. Der Mitarbeiter sieht Zählstand, offene Punkte seiner
+  // Bereiche und den Weg in die Zählung.
+  const mitWerten = istBetriebsleiter(benutzer.rolle)
 
   const [laufende, artikelzahl, letzte, lage] = await Promise.all([
     // Die jüngste offene Zählung, nicht nur die von heute: eine gestern
@@ -85,8 +90,9 @@ export default async function Page() {
     offenlage(betrieb.id),
   ])
 
-  const punkte = offenePunkte(lage)
+  const punkte = punkteFuerRolle(offenePunkte(lage), benutzer.rolle)
   const jeBereich = punkteJeBereich(punkte)
+  const bereiche = sichtbareBereiche(benutzer.rolle)
   const heutigesDatum = heute()
 
   const stand: Zaehlstand =
@@ -103,6 +109,7 @@ export default async function Page() {
     <div className="flex flex-1 flex-col md:flex-row">
       <Seitennavigation
         betrieb={betrieb.name}
+        bereiche={bereiche}
         jeBereich={jeBereich}
         artikelzahl={artikelzahl}
         aktiv="start"
@@ -128,7 +135,11 @@ export default async function Page() {
             <Zaehlband stand={stand} />
           </div>
 
-          <div className="flex flex-col gap-5 md:grid md:grid-cols-[1.3fr_1fr] md:items-start md:gap-7">
+          <div
+            className={`flex flex-col gap-5 md:items-start md:gap-7 ${
+              mitWerten ? 'md:grid md:grid-cols-[1.3fr_1fr]' : ''
+            }`}
+          >
             <section className="flex flex-col gap-2">
               <h2 className={ABSCHNITT}>Offen</h2>
               {punkte.length === 0 ? (
@@ -151,10 +162,12 @@ export default async function Page() {
               )}
             </section>
 
-            <section className="flex flex-col gap-2">
-              <h2 className={ABSCHNITT}>Letzte abgeschlossene Zählung</h2>
-              <Letztekennzahlen stand={letzte} />
-            </section>
+            {mitWerten && (
+              <section className="flex flex-col gap-2">
+                <h2 className={ABSCHNITT}>Letzte abgeschlossene Zählung</h2>
+                <Letztekennzahlen stand={letzte} />
+              </section>
+            )}
           </div>
 
           {/* Die Bereiche stehen auf dem Telefon hier; auf dem Desktop sind sie
@@ -162,7 +175,7 @@ export default async function Page() {
           <section className="flex flex-col gap-2 md:hidden">
             <h2 className={ABSCHNITT}>Bereiche</h2>
             <div className={`flex ${LISTE}`}>
-              {BEREICHE.map((bereich) => (
+              {bereiche.map((bereich) => (
                 <Listenzeile
                   key={bereich.schluessel}
                   titel={bereich.name}
@@ -193,7 +206,7 @@ export default async function Page() {
           </section>
         </main>
 
-        <Zaehlfuss stand={stand} />
+        <Zaehlfuss stand={stand} mitAuswertung={mitWerten} />
       </div>
     </div>
   )
@@ -276,7 +289,7 @@ function Zaehlband({ stand }: { stand: Zaehlstand }) {
  * ihrem Ende steht und beim Scrollen unten bleibt. Der Zuschlag unten ist die
  * Randzone des Geräts — ohne ihn läge die Fläche unter der Wischleiste.
  */
-function Zaehlfuss({ stand }: { stand: Zaehlstand }) {
+function Zaehlfuss({ stand, mitAuswertung }: { stand: Zaehlstand; mitAuswertung: boolean }) {
   return (
     <footer className="sticky bottom-0 z-10 flex flex-col gap-2.5 border-t border-border bg-surface px-4 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] md:hidden">
       {stand.art === 'laeuft' ? (
@@ -315,9 +328,13 @@ function Zaehlfuss({ stand }: { stand: Zaehlstand }) {
               Zählung beginnen
             </Schaltflaeche>
           </form>
-          <Wegflaeche href="/auswertung" art="sekundaer" breit>
-            Letzte Auswertung ansehen
-          </Wegflaeche>
+          {/* Der Weg in die Auswertung führt zu Geldzahlen — er erscheint nur
+              der Betriebsleitung. */}
+          {mitAuswertung && (
+            <Wegflaeche href="/auswertung" art="sekundaer" breit>
+              Letzte Auswertung ansehen
+            </Wegflaeche>
+          )}
         </>
       )}
     </footer>

@@ -26,6 +26,7 @@ import type { NextRequest } from 'next/server'
 
 import { Abweichungsart, Abweichungsstatus } from '@/generated/prisma/enums'
 import { angemeldeterBenutzer } from '@/lib/anmeldung'
+import { darfPreiseSehen } from '@/lib/berechtigungen'
 import { prisma } from '@/lib/prisma'
 import { luecke, stimmig, type Abweichungseingabe } from '@/lib/wareneingang'
 
@@ -251,6 +252,14 @@ export async function POST(
     }
   }
 
+  // Ohne Preissicht (darfPreiseSehen) bekommt die Maske die Lieferscheinpreise
+  // gar nicht erst — schickte diese Route deren `null` in die Datenbank, wäre
+  // jeder von der Betriebsleitung erfasste Preis nach dem ersten
+  // Mitarbeiter-Speichern still gelöscht. Deshalb bleibt der Preis beim
+  // Aktualisieren unangetastet, und die PREISABWEICHUNGen einer Zeile
+  // überleben das Ersetzen der Abweichungen.
+  const mitPreisen = darfPreiseSehen(benutzer.rolle)
+
   const gespeichert = await prisma.$transaction(async (tx) => {
     const ids: { artikelId: string; id: string }[] = []
 
@@ -262,7 +271,7 @@ export async function POST(
         bestellpositionId: position.bestellpositionId,
         anzahlGebindeLieferschein: position.lieferschein,
         anzahlGebindeTatsaechlich: position.tatsaechlich,
-        ekPreisCentLieferschein: position.ekPreisCentLieferschein,
+        ...(mitPreisen ? { ekPreisCentLieferschein: position.ekPreisCentLieferschein } : {}),
         nachlieferungZugesagtBis:
           position.nachlieferungZugesagtBis === null
             ? null
@@ -276,8 +285,15 @@ export async function POST(
             })
           : await tx.lieferposition.update({ where: { id: position.id }, data: daten })
 
-      await tx.abweichung.deleteMany({ where: { lieferpositionId: zeile.id } })
+      await tx.abweichung.deleteMany({
+        where: {
+          lieferpositionId: zeile.id,
+          ...(mitPreisen ? {} : { art: { not: Abweichungsart.PREISABWEICHUNG } }),
+        },
+      })
       for (const abweichung of position.abweichungen) {
+        // Was die Rolle nicht sehen kann, darf sie auch nicht behaupten.
+        if (!mitPreisen && abweichung.art === Abweichungsart.PREISABWEICHUNG) continue
         await tx.abweichung.create({
           data: {
             betriebId: lieferung.betriebId,

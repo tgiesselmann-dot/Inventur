@@ -16,7 +16,8 @@
 
 import { notFound } from 'next/navigation'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBenutzer } from '@/lib/anmeldung'
+import { darfPreiseSehen } from '@/lib/berechtigungen'
 import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
 import type { Abweichungseingabe, Leergutzeile, PruefPosition } from '@/lib/wareneingang'
@@ -28,7 +29,12 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]'>) {
   if (!istKennung(id)) notFound()
 
   // Über Id und Betrieb gesucht: eine fremde Lieferung ist damit nicht gefunden.
-  const betrieb = await aktuellerBetrieb()
+  const benutzer = await pflichtBenutzer()
+  const betrieb = benutzer.betrieb
+  // Ohne Preissicht werden die Einkaufspreise schon hier genullt, nicht erst in
+  // der Maske versteckt: was der Server nicht mitschickt, steht auch in keinem
+  // Seitenquelltext. Das Pfand bleibt — es ist Pfand, kein Einkaufspreis.
+  const mitPreisen = darfPreiseSehen(benutzer.rolle)
   const lieferung = await prisma.lieferung.findFirst({
     where: { id, betriebId: betrieb.id },
     include: {
@@ -48,17 +54,20 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]'>) {
   })
   if (lieferung === null) notFound()
 
-  const stamm = await prisma.artikel.findMany({
+  const stammRoh = await prisma.artikel.findMany({
     where: { betriebId: lieferung.betriebId, aktiv: true },
     omit: { einheitsgroesseLiter: true },
     orderBy: { sortierung: 'asc' },
   })
+  const stamm = mitPreisen
+    ? stammRoh
+    : stammRoh.map((artikel) => ({ ...artikel, ekPreisCent: null }))
 
   const positionen: PruefPosition[] = lieferung.positionen.map((position) => {
     const bestellt = position.bestellposition
     return {
       id: position.id,
-      artikel: position.artikel,
+      artikel: mitPreisen ? position.artikel : { ...position.artikel, ekPreisCent: null },
       bestellt: bestellt?.anzahlGebinde.toString() ?? null,
       bestellpositionId: position.bestellpositionId,
       // Nur füllen, wenn tatsächlich ein anderer Artikel geliefert wurde —
@@ -73,7 +82,7 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]'>) {
             },
       lieferschein: position.anzahlGebindeLieferschein.toString(),
       tatsaechlich: position.anzahlGebindeTatsaechlich.toString(),
-      ekPreisCentLieferschein: position.ekPreisCentLieferschein,
+      ekPreisCentLieferschein: mitPreisen ? position.ekPreisCentLieferschein : null,
       nachlieferungZugesagtBis:
         position.nachlieferungZugesagtBis?.toISOString().slice(0, 10) ?? null,
       abweichungen: position.abweichungen.map(
@@ -101,6 +110,7 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]'>) {
       datum={lieferung.datum.toISOString().slice(0, 10)}
       geprueft={lieferung.geprueftAm !== null}
       fahrerName={lieferung.fahrerName}
+      mitPreisen={mitPreisen}
       mitBestellung={lieferung.bestellung !== null}
       positionen={positionen}
       leergut={leergut}

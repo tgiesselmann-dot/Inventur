@@ -52,6 +52,7 @@ const BEFUND = {
 
 export function Zeilenmaske({
   position,
+  mitPreisen,
   mitBestellung,
   gesperrt,
   aufFertig,
@@ -59,6 +60,8 @@ export function Zeilenmaske({
   aufErsatzartikel,
 }: {
   position: PruefPosition
+  /** Ohne Preissicht gibt es weder Preisfeld noch Beträge — siehe Pruefmaske. */
+  mitPreisen: boolean
   mitBestellung: boolean
   gesperrt: boolean
   aufFertig: () => void
@@ -92,8 +95,8 @@ export function Zeilenmaske({
    * Bildschirm behauptete eine Antwort, die niemand gegeben hat.
    */
   const erklaert = stimmig(position)
-  const befund = abweichungstext(position)
-  const preisabweichung = preisabweichungstext(position)
+  const befund = abweichungstext(position, mitPreisen)
+  const preisabweichung = mitPreisen ? preisabweichungstext(position) : null
 
   /** Das Komma gehört zum Preis. Gebinde werden nicht halbiert. */
   const dezimal = feld === 'preis'
@@ -171,12 +174,16 @@ export function Zeilenmaske({
             und Bruchfrage, weil keiner von ihnen den Regelfall aufhält — und sie
             sind der Teil, der scrollt und den Dehnraum bildet. */}
         <div className="mt-5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-          <Preiszeile
-            beschriftung={`Preis je ${gebindeEinzahl(position.artikel.gebindeart)} laut Lieferschein`}
-            wert={preistext}
-            aktiv={feld === 'preis'}
-            aufKlick={gesperrt ? undefined : () => setFeld('preis')}
-          />
+          {/* Der Preis laut Lieferschein ist eine Frage der Betriebsleitung —
+              ohne Preissicht fehlt das Feld ganz, statt leer dazustehen. */}
+          {mitPreisen && (
+            <Preiszeile
+              beschriftung={`Preis je ${gebindeEinzahl(position.artikel.gebindeart)} laut Lieferschein`}
+              wert={preistext}
+              aktiv={feld === 'preis'}
+              aufKlick={gesperrt ? undefined : () => setFeld('preis')}
+            />
+          )}
           {/* Der Satz trägt seinen Rat schon in sich ("später klären" /
               "jetzt nachfragen"); der Ton folgt der Stufe wie in der Liste —
               die stille Abweichung bleibt grau. */}

@@ -19,7 +19,7 @@ import {
   statusText,
   type Lieferstand,
 } from '@/lib/bestellung'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsDatumstext } from '@/lib/datum'
 import { prisma } from '@/lib/prisma'
 import { Modusumschalter } from '@/ui/modus'
@@ -66,7 +66,7 @@ function stand(bestellung: {
 }
 
 export default async function Page() {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const bestellungen = await prisma.bestellung.findMany({
     where: { betriebId: betrieb.id },
     orderBy: { datum: 'desc' },

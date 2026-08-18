@@ -11,7 +11,7 @@
  * Artikel hängen Zählungen und Lieferungen.
  */
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsListenzeile, kategorien } from '@/lib/artikelstamm'
 import { prisma } from '@/lib/prisma'
 
@@ -20,7 +20,7 @@ import { Artikelliste } from './liste'
 export const dynamic = 'force-dynamic'
 
 export default async function Page() {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   const artikel = await prisma.artikel.findMany({
     where: { betriebId: betrieb.id },

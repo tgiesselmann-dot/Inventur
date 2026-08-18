@@ -7,7 +7,7 @@
  * src/lib/artikelimport.ts.
  */
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 
 import { Importstrecke } from './importstrecke'
 
@@ -17,7 +17,7 @@ export default async function Page() {
   // Der Betrieb wird hier nicht gebraucht, der Aufruf aber sehr wohl: er ist
   // die Zugangsprüfung. Die Strecke selbst schreibt über Serveraktionen, und
   // die fragen noch einmal — dies hier ist die Tür, nicht das Schloss.
-  await aktuellerBetrieb()
+  await pflichtBetriebsleiter()
 
   return <Importstrecke />
 }

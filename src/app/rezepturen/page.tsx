@@ -20,7 +20,7 @@
 
 import Link from 'next/link'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { prisma } from '@/lib/prisma'
 import {
   nachArtikel,
@@ -45,7 +45,7 @@ export default async function Page({ searchParams }: PageProps<'/rezepturen'>) {
   const ansicht = parameter.ansicht === 'artikel' ? 'artikel' : 'getraenk'
   const suche = typeof parameter.suche === 'string' ? parameter.suche.trim() : ''
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   // Nur Bezeichnungen, an denen Bestandteile hängen: eine Rezeptur ist, was
   // etwas abzieht. Ausgenommene und offene Zeilen gehören in die Zuordnung.

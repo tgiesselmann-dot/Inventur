@@ -18,7 +18,7 @@
 
 import Link from 'next/link'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsDatumstext, alsKurzdatum } from '@/lib/datum'
 import { alsAnschlussanzeige, kette, naechsterTag } from '@/lib/importkette'
 import { prisma } from '@/lib/prisma'
@@ -39,7 +39,7 @@ const IMPORTE_GEZEIGT = 12
 const BALKEN_GEZEIGT = 6
 
 export default async function Page() {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   const [importe, offen, uebergangen, zugeordnet] = await Promise.all([
     prisma.umsatzimport.findMany({

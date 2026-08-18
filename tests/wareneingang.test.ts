@@ -362,6 +362,21 @@ describe('abweichungstext', () => {
     const zugesagt = nachlieferungSetzen(mengeSetzen(zeile('6'), '5'), '2026-08-14')
     expect(abweichungstext(zugesagt)).toBe('1 Kasten fehlt · Nachlieferung bis 14.08.2026')
   })
+
+  it('schweigt ohne Preissicht über Geld — auch über „nicht bewertbar"', () => {
+    // Die Fassung für Rollen ohne Preissicht: Menge ja, Betrag nie.
+    expect(abweichungstext(mengeSetzen(zeile('6'), '5'), false)).toBe('1 Kasten fehlt')
+    const ohnePreis = vorbelegt({
+      id: 'p2',
+      artikel: kartonWeinOhnePreis,
+      bestellt: null,
+      lieferschein: '2',
+    })
+    expect(abweichungstext(mengeSetzen(ohnePreis, '1'), false)).toBe('1 Karton fehlt')
+    const fehlt = mengeSetzen(zeile('6'), '5')
+    const geteilt = { ...fehlt, abweichungen: mitBruch(fehlt, '1') }
+    expect(abweichungstext(geteilt, false)).toBe('1 Kasten fehlt · mit Bruch')
+  })
 })
 
 describe('preisabweichungstext', () => {
@@ -505,6 +520,25 @@ describe('bilanztext', () => {
     })
     expect(bilanztext(zusammenfassung([mengeSetzen(ohnePreis, '1')]))).toBe(
       '1 Abweichung · nicht bewertbar',
+    )
+  })
+
+  it('nennt ohne Preissicht die Zahl der Abweichungen, aber keinen Betrag', () => {
+    const positionen = [zeile('6'), mengeSetzen(zeile('4'), '3'), mengeSetzen(zeile('2'), '3')]
+    expect(bilanztext(zusammenfassung(positionen), undefined, false)).toBe('2 Abweichungen')
+    expect(bilanztext(zusammenfassung([zeile('6')]), undefined, false)).toBe('ohne Abweichung')
+  })
+
+  it('benennt ohne Preissicht abweichendes Leergut, ohne das Pfand zu beziffern', () => {
+    const kaesten: Leergutzeile = {
+      id: 'lg1',
+      bezeichnung: 'Kasten 24er',
+      lieferschein: '6',
+      tatsaechlich: '4',
+      pfandCentJeEinheit: 330,
+    }
+    expect(bilanztext(zusammenfassung([zeile('6')]), leergutzusammenfassung([kaesten]), false)).toBe(
+      'Leergut weicht ab',
     )
   })
 })

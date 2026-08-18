@@ -21,7 +21,8 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 import { BestellStatus } from '@/generated/prisma/enums'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { aktuellerBetrieb, pflichtBenutzer } from '@/lib/anmeldung'
+import { istBetriebsleiter } from '@/lib/berechtigungen'
 import { alsDatumstext, alsFeldwert, alsKurzdatum, heute } from '@/lib/datum'
 import { prisma } from '@/lib/prisma'
 import { kontrollstand } from '@/lib/wareneingang'
@@ -99,7 +100,11 @@ async function wareneingangBeginnen(formular: FormData) {
 
 export default async function Page({ searchParams }: PageProps<'/lieferungen'>) {
   const parameter = await searchParams
-  const betrieb = await aktuellerBetrieb()
+  const benutzer = await pflichtBenutzer()
+  const betrieb = benutzer.betrieb
+  // Abweichungen und Bestellungen handeln von Beträgen — die beiden Wege
+  // erscheinen nur der Betriebsleitung (siehe src/lib/berechtigungen.ts).
+  const mitVerwaltung = istBetriebsleiter(benutzer.rolle)
   const [lieferungen, lieferanten, bestellungen] = await Promise.all([
     prisma.lieferung.findMany({
       where: { betriebId: betrieb.id },
@@ -137,18 +142,22 @@ export default async function Page({ searchParams }: PageProps<'/lieferungen'>) 
               Rampe auffiel, wird dort nachverfolgt. Auf dem Telefon laufen die
               beiden Links neben dem Titel aus dem Bild — dort stehen sie als
               Karten am Ende der Seite. */}
-          <Link
-            href="/lieferungen/abweichungen"
-            className="tap hidden min-h-tap items-center rounded-ctl px-2 text-sm font-medium whitespace-nowrap text-primary-text focus-visible:fokus md:inline-flex"
-          >
-            Abweichungen
-          </Link>
-          <Link
-            href="/bestellungen"
-            className="tap hidden min-h-tap items-center rounded-ctl px-2 text-sm font-medium whitespace-nowrap text-primary-text focus-visible:fokus md:inline-flex"
-          >
-            Bestellungen
-          </Link>
+          {mitVerwaltung && (
+            <>
+              <Link
+                href="/lieferungen/abweichungen"
+                className="tap hidden min-h-tap items-center rounded-ctl px-2 text-sm font-medium whitespace-nowrap text-primary-text focus-visible:fokus md:inline-flex"
+              >
+                Abweichungen
+              </Link>
+              <Link
+                href="/bestellungen"
+                className="tap hidden min-h-tap items-center rounded-ctl px-2 text-sm font-medium whitespace-nowrap text-primary-text focus-visible:fokus md:inline-flex"
+              >
+                Bestellungen
+              </Link>
+            </>
+          )}
           <Modusumschalter className="md:hidden" />
         </div>
       </div>
@@ -283,26 +292,28 @@ export default async function Page({ searchParams }: PageProps<'/lieferungen'>) 
       )}
 
       {/* Der mobile Ersatz für die ausgeblendeten Kopfzeilen-Links. */}
-      <nav className="mt-6 flex flex-col gap-tapgap md:hidden">
-        <Link
-          href="/lieferungen/abweichungen"
-          className="tap flex h-tap items-center justify-between gap-3 rounded-ctl border border-border bg-surface px-4 focus-visible:fokus"
-        >
-          Abweichungen
-          <span aria-hidden className="shrink-0 text-text-muted">
-            ›
-          </span>
-        </Link>
-        <Link
-          href="/bestellungen"
-          className="tap flex h-tap items-center justify-between gap-3 rounded-ctl border border-border bg-surface px-4 focus-visible:fokus"
-        >
-          Bestellungen
-          <span aria-hidden className="shrink-0 text-text-muted">
-            ›
-          </span>
-        </Link>
-      </nav>
+      {mitVerwaltung && (
+        <nav className="mt-6 flex flex-col gap-tapgap md:hidden">
+          <Link
+            href="/lieferungen/abweichungen"
+            className="tap flex h-tap items-center justify-between gap-3 rounded-ctl border border-border bg-surface px-4 focus-visible:fokus"
+          >
+            Abweichungen
+            <span aria-hidden className="shrink-0 text-text-muted">
+              ›
+            </span>
+          </Link>
+          <Link
+            href="/bestellungen"
+            className="tap flex h-tap items-center justify-between gap-3 rounded-ctl border border-border bg-surface px-4 focus-visible:fokus"
+          >
+            Bestellungen
+            <span aria-hidden className="shrink-0 text-text-muted">
+              ›
+            </span>
+          </Link>
+        </nav>
+      )}
     </main>
   )
 

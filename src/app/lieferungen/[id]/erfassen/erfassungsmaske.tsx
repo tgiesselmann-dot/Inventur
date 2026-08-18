@@ -45,6 +45,8 @@ type Props = {
   belegNr: string
   /** Lieferdatum als ISO-Text. */
   datum: string
+  /** Ohne Preissicht schweigen beide Fassungen über Positionswerte und Summen. */
+  mitPreisen: boolean
   positionen: ErfassungsPosition[]
   stamm: ErfassungsArtikel[]
 }
@@ -203,6 +205,7 @@ export function Erfassungsmaske(props: Props) {
           lieferant={props.lieferant}
           belegNr={props.belegNr}
           datum={props.datum}
+          mitPreisen={props.mitPreisen}
           zeilen={zeilen}
           stamm={props.stamm}
           summe={summe}
@@ -218,6 +221,7 @@ export function Erfassungsmaske(props: Props) {
           lieferant={props.lieferant}
           belegNr={props.belegNr}
           datum={props.datum}
+          mitPreisen={props.mitPreisen}
           zeilen={zeilen}
           stamm={props.stamm}
           summe={summe}

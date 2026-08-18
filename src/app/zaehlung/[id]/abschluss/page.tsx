@@ -23,7 +23,8 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBenutzer } from '@/lib/anmeldung'
+import { istBetriebsleiter } from '@/lib/berechtigungen'
 import { alsMenge, type Kategoriebestand } from '@/lib/auswertung'
 import { zaehlungsergebnis, type Zaehlungsergebnis } from '@/lib/auswertung-daten'
 import { alsDatumstext, kalenderwoche } from '@/lib/datum'
@@ -42,11 +43,16 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]/abschlu
   const { id } = await params
   if (!istKennung(id)) notFound()
 
-  const betrieb = await aktuellerBetrieb()
-  const ergebnis = await zaehlungsergebnis(betrieb.id, id)
+  const benutzer = await pflichtBenutzer()
+  const ergebnis = await zaehlungsergebnis(benutzer.betrieb.id, id)
   if (ergebnis === null) notFound()
   // Eine laufende Zählung hat kein Ergebnis, sondern eine Maske.
   if (!ergebnis.abgeschlossen) redirect(`/zaehlung/${id}`)
+
+  // Bestandswert, Kategoriewerte und Schwund sind Geld — sie erscheinen nur
+  // der Betriebsleitung. Der Mitarbeiter sieht, dass seine Zählung angekommen
+  // ist: Datum, Vollständigkeit, Dauer, und den Weg zu den gezählten Werten.
+  const mitWerten = istBetriebsleiter(benutzer.rolle)
 
   const gesperrt = ergebnis.ohnePreis.length > 0
 
@@ -77,6 +83,7 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]/abschlu
         {/* Der Bestandswert über die volle Breite, die beiden Zahlen zu seiner
             Einordnung darunter nebeneinander: auf 390 px trägt ein Euro-Betrag
             keine halbe Spalte, zwei Stückzahlen schon. */}
+        {mitWerten && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div className="col-span-2 sm:col-span-1">
             <Kennzahl
@@ -124,30 +131,34 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]/abschlu
             }
           />
         </div>
+        )}
 
-        {gesperrt && <OhnePreis artikel={ergebnis.ohnePreis} />}
+        {mitWerten && gesperrt && <OhnePreis artikel={ergebnis.ohnePreis} />}
 
-        <Kategorien kategorien={ergebnis.kategorien} bestand={ergebnis.bestand} />
+        {mitWerten && <Kategorien kategorien={ergebnis.kategorien} bestand={ergebnis.bestand} />}
       </main>
 
       {/* Auf dem Telefon fest im Fuss, im unteren Drittel. Auf dem Desktop
           rechts unter der Tabelle: row-reverse legt die primäre Fläche nach
           rechts aussen, ohne die Reihenfolge im Dokument zu drehen. */}
       <footer className="sticky bottom-0 z-10 mx-auto flex w-full max-w-5xl flex-col gap-tapgap border-t border-border bg-surface px-4 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] md:static md:flex-row-reverse md:justify-start md:border-0 md:bg-transparent md:px-8 md:pt-0 md:pb-8">
-        {gesperrt ? (
-          // Kein Link, keine Fläche zum Antippen: die Auswertung würde einen
-          // Bestandswert zeigen, dem vier Artikel fehlen. Die Aufschrift trägt
-          // den Grund der Sperre, nicht nur die Sperre.
-          <span
-            aria-disabled
-            className="flex min-h-tap flex-col items-center justify-center rounded-ctl bg-surface-2 px-6 text-center text-zeile font-semibold text-text-muted"
-          >
-            Zur Auswertung
-            <span className="text-sm font-normal">braucht alle Einkaufspreise</span>
-          </span>
-        ) : (
-          <Wegflaeche href="/auswertung">Zur Auswertung</Wegflaeche>
-        )}
+        {/* Die Auswertung ist Geld — für den Mitarbeiter gibt es hier weder
+            den Weg noch die Sperre, die von ihm spräche. */}
+        {mitWerten &&
+          (gesperrt ? (
+            // Kein Link, keine Fläche zum Antippen: die Auswertung würde einen
+            // Bestandswert zeigen, dem vier Artikel fehlen. Die Aufschrift trägt
+            // den Grund der Sperre, nicht nur die Sperre.
+            <span
+              aria-disabled
+              className="flex min-h-tap flex-col items-center justify-center rounded-ctl bg-surface-2 px-6 text-center text-zeile font-semibold text-text-muted"
+            >
+              Zur Auswertung
+              <span className="text-sm font-normal">braucht alle Einkaufspreise</span>
+            </span>
+          ) : (
+            <Wegflaeche href="/auswertung">Zur Auswertung</Wegflaeche>
+          ))}
         <Wegflaeche href={`/zaehlung/${ergebnis.zaehlungId}`} art="sekundaer">
           Werte ansehen
         </Wegflaeche>

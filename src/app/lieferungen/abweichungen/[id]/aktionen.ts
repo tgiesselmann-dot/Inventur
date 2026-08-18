@@ -20,7 +20,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { Abweichungsstatus } from '@/generated/prisma/enums'
-import { pflichtBenutzer } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { prisma } from '@/lib/prisma'
 import { istAktiv, naechsterSchritt } from '@/lib/reklamation'
 import { centAusEingabe } from '@/lib/wareneingang'
@@ -30,7 +30,7 @@ async function aktiveAbweichung(formular: FormData) {
   if (id === '') throw new Error('Keine Abweichung angegeben')
 
   // Über Id und Betrieb gesucht: die Id kommt aus einem Formular.
-  const benutzer = await pflichtBenutzer()
+  const benutzer = await pflichtBetriebsleiter()
   const abweichung = await prisma.abweichung.findFirst({
     where: { id, betriebId: benutzer.betrieb.id },
   })

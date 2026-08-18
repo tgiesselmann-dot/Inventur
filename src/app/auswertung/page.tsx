@@ -11,7 +11,7 @@
  * Hinweis auf eine Lücke gehört nach oben und nicht in eine Fussnote.
  */
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import {
   bestand,
   bestandswerttext,
@@ -42,7 +42,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function Page({ searchParams }: PageProps<'/auswertung'>) {
   const parameter = await searchParams
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   // Ohne Parameter der jüngste Zeitraum — der Normalfall. Mit `bis` der
   // Zeitraum, der auf dieser Zählung endet: der Weg aus dem Verlauf in die

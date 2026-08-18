@@ -19,7 +19,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { istKennung } from '@/lib/kennung'
 import {
   darfGeloeschtWerden,
@@ -51,7 +51,7 @@ async function zeilen(betriebId: string): Promise<Lagerortzeile[]> {
 }
 
 export async function lagerortAnlegen(formular: FormData) {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const vorhanden = await zeilen(betrieb.id)
 
   const geprueft = nameGeprueft(String(formular.get('name') ?? ''), vorhanden)
@@ -67,7 +67,7 @@ export async function lagerortUmbenennen(formular: FormData) {
   const id = String(formular.get('id') ?? '')
   if (!istKennung(id)) redirect(SEITE)
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const vorhanden = await zeilen(betrieb.id)
   if (!vorhanden.some((ort) => ort.id === id)) redirect(SEITE)
 
@@ -95,7 +95,7 @@ export async function lagerortUmschalten(formular: FormData) {
   const id = String(formular.get('id') ?? '')
   if (!istKennung(id)) redirect(SEITE)
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const vorhanden = await zeilen(betrieb.id)
   const ort = vorhanden.find((eintrag) => eintrag.id === id)
   if (ort === undefined) redirect(SEITE)
@@ -125,7 +125,7 @@ export async function lagerortLoeschen(formular: FormData) {
   const id = String(formular.get('id') ?? '')
   if (!istKennung(id)) redirect(SEITE)
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const vorhanden = await zeilen(betrieb.id)
   const ort = vorhanden.find((eintrag) => eintrag.id === id)
   if (ort === undefined) redirect(SEITE)

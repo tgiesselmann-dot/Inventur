@@ -14,7 +14,7 @@
 
 import { revalidatePath } from 'next/cache'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { importiereArtikelstamm, type Importergebnis } from '@/lib/artikelimport'
 import { prisma } from '@/lib/prisma'
 
@@ -23,7 +23,7 @@ export type Importantwort =
   | { art: 'fehler'; meldung: string }
 
 async function betriebId(): Promise<string> {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   return betrieb.id
 }
 

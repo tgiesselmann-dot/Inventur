@@ -60,6 +60,8 @@ type Props = {
   lieferant: string
   belegNr: string
   datum: string
+  /** Ohne Preissicht fehlen Positionswert-Spalte und Summe — siehe Pruefmaske. */
+  mitPreisen: boolean
   zeilen: ErfassungsPosition[]
   stamm: ErfassungsArtikel[]
   summe: Erfassungssumme
@@ -84,6 +86,7 @@ export function Tabellenerfassung({
   lieferant,
   belegNr,
   datum,
+  mitPreisen,
   zeilen,
   stamm,
   summe,
@@ -242,7 +245,7 @@ export function Tabellenerfassung({
           <span className={SPALTE.liefergebinde}>Liefergebinde</span>
           <span className={`${SPALTE.gebinde} text-right`}>Gebinde</span>
           <span className={SPALTE.einheiten}>Einheiten</span>
-          <span className={SPALTE.wert}>Positionswert</span>
+          {mitPreisen && <span className={SPALTE.wert}>Positionswert</span>}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-4">
@@ -252,6 +255,7 @@ export function Tabellenerfassung({
                 key={zeile.id}
                 zeile={zeile}
                 nummer={index + 1}
+                mitPreisen={mitPreisen}
                 eingabeRef={(element) => {
                   if (element === null) zeilenRefs.current.delete(zeile.id)
                   else zeilenRefs.current.set(zeile.id, element)
@@ -264,6 +268,7 @@ export function Tabellenerfassung({
 
           <AktiveZeile
             nummer={zeilen.length + 1}
+            mitPreisen={mitPreisen}
             entwurf={entwurf}
             suche={suche}
             sucheRef={sucheRef}
@@ -277,7 +282,12 @@ export function Tabellenerfassung({
           />
 
           {suche.trim() !== '' && entwurf.schritt === 'suche' && (
-            <Trefferliste treffer={treffer} gewaehlt={gewaehlt} aufWahl={waehlen} />
+            <Trefferliste
+              treffer={treffer}
+              gewaehlt={gewaehlt}
+              mitPreisen={mitPreisen}
+              aufWahl={waehlen}
+            />
           )}
 
           <p className="flex items-center gap-4 px-1 py-3 text-sm text-text-muted">
@@ -303,7 +313,7 @@ export function Tabellenerfassung({
             <span className="text-abschnitt uppercase text-text-muted">
               {summe.positionen === 1 ? '1 Position erfasst' : `${summe.positionen} Positionen erfasst`}
             </span>
-            {summe.unbewertbar > 0 && (
+            {mitPreisen && summe.unbewertbar > 0 && (
               <span className="text-sm text-text-muted">
                 {summe.unbewertbar === 1
                   ? '1 Zeile ohne hinterlegten Preis — sie fehlt in der Summe.'
@@ -311,13 +321,19 @@ export function Tabellenerfassung({
               </span>
             )}
           </div>
-          <div className="ml-auto flex flex-col items-end gap-0.5">
-            <span className={BESCHRIFTUNG}>Summe Lieferung</span>
-            <span className="text-titel">{warenwerttext(summe)}</span>
+          {/* Die Summe ist Geld — ohne Preissicht steht hier nur die
+              Zeilenzahl, und die Speichern-Taste rückt an den Rand. */}
+          <div className="ml-auto flex items-center gap-5">
+            {mitPreisen && (
+              <div className="flex flex-col items-end gap-0.5">
+                <span className={BESCHRIFTUNG}>Summe Lieferung</span>
+                <span className="text-titel">{warenwerttext(summe)}</span>
+              </div>
+            )}
+            <Schaltflaeche rolle="confirm" onClick={aufSpeichern}>
+              Lieferung speichern
+            </Schaltflaeche>
           </div>
-          <Schaltflaeche rolle="confirm" onClick={aufSpeichern}>
-            Lieferung speichern
-          </Schaltflaeche>
         </div>
       </footer>
     </>
@@ -372,12 +388,14 @@ function Taste({ children }: { children: string }) {
 function Tabellenzeile({
   zeile,
   nummer,
+  mitPreisen,
   eingabeRef,
   aufAendern,
   aufTaste,
 }: {
   zeile: ErfassungsPosition
   nummer: number
+  mitPreisen: boolean
   eingabeRef: (element: HTMLInputElement | null) => void
   aufAendern: (anzahl: string) => void
   aufTaste: (ereignis: KeyboardEvent<HTMLInputElement>) => void
@@ -410,7 +428,7 @@ function Tabellenzeile({
       <span className={`${SPALTE.einheiten} ${ABGELEITET}`}>
         {einheitenzeile(zeile.artikel, zeile.lieferschein)}
       </span>
-      <span className={`${SPALTE.wert} ${ABGELEITET}`}>{wert ?? 'nicht bewertbar'}</span>
+      {mitPreisen && <span className={`${SPALTE.wert} ${ABGELEITET}`}>{wert ?? 'nicht bewertbar'}</span>}
     </li>
   )
 }
@@ -422,6 +440,7 @@ function Tabellenzeile({
  */
 function AktiveZeile({
   nummer,
+  mitPreisen,
   entwurf,
   suche,
   sucheRef,
@@ -432,6 +451,7 @@ function AktiveZeile({
   aufAnzahlTaste,
 }: {
   nummer: number
+  mitPreisen: boolean
   entwurf: Entwurf
   suche: string
   sucheRef: React.RefObject<HTMLInputElement | null>
@@ -500,11 +520,13 @@ function AktiveZeile({
           ? einheitenzeile(entwurf.artikel, entwurf.anzahl)
           : '—'}
       </span>
-      <span className={`${SPALTE.wert} ${ABGELEITET}`}>
-        {inAnzahl && entwurf.anzahl !== ''
-          ? (positionswerttext(entwurf.artikel, entwurf.anzahl) ?? 'nicht bewertbar')
-          : '—'}
-      </span>
+      {mitPreisen && (
+        <span className={`${SPALTE.wert} ${ABGELEITET}`}>
+          {inAnzahl && entwurf.anzahl !== ''
+            ? (positionswerttext(entwurf.artikel, entwurf.anzahl) ?? 'nicht bewertbar')
+            : '—'}
+        </span>
+      )}
     </div>
   )
 }
@@ -516,20 +538,28 @@ function AktiveZeile({
 function Trefferliste({
   treffer,
   gewaehlt,
+  mitPreisen,
   aufWahl,
 }: {
   treffer: ErfassungsArtikel[]
   gewaehlt: number
+  /** Ohne Preissicht fehlt auch der Weg in die Stammdaten — der ist zu. */
+  mitPreisen: boolean
   aufWahl: (artikel: ErfassungsArtikel) => void
 }) {
   return (
     <div className="mt-1.5 overflow-hidden rounded-ctl border border-border bg-surface shadow-lg">
       {treffer.length === 0 ? (
         <p className="px-4 py-3 text-sm text-text-muted">
-          Kein Treffer im Artikelstamm.{' '}
-          <Link href="/artikel/neu" className="font-medium text-primary-text">
-            Artikel anlegen
-          </Link>
+          Kein Treffer im Artikelstamm.
+          {mitPreisen && (
+            <>
+              {' '}
+              <Link href="/artikel/neu" className="font-medium text-primary-text">
+                Artikel anlegen
+              </Link>
+            </>
+          )}
         </p>
       ) : (
         <>
@@ -573,12 +603,14 @@ function Trefferliste({
             <span>
               <Taste>Esc</Taste> abbrechen
             </span>
-            <span className="ml-auto">
-              Kein Treffer?{' '}
-              <Link href="/artikel/neu" className="font-medium text-primary-text">
-                Artikel anlegen
-              </Link>
-            </span>
+            {mitPreisen && (
+              <span className="ml-auto">
+                Kein Treffer?{' '}
+                <Link href="/artikel/neu" className="font-medium text-primary-text">
+                  Artikel anlegen
+                </Link>
+              </span>
+            )}
           </p>
         </>
       )}

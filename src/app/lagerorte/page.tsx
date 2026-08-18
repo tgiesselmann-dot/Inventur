@@ -15,7 +15,7 @@
  * wird stillgelegt — an einem Ort mit Zählwerten hängen Bestände von Wochen.
  */
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import {
   NAME_MAXLAENGE,
   darfGeloeschtWerden,
@@ -54,7 +54,7 @@ function fehlertext(fehler: string): string | null {
 
 export default async function Page({ searchParams }: PageProps<'/lagerorte'>) {
   const parameter = await searchParams
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   const orte = await prisma.lagerort.findMany({
     where: { betriebId: betrieb.id },

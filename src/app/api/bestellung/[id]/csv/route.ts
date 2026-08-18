@@ -12,6 +12,7 @@
  */
 
 import { angemeldeterBenutzer } from '@/lib/anmeldung'
+import { istBetriebsleiter } from '@/lib/berechtigungen'
 import { alsCsv } from '@/lib/csv'
 import { alsDatumstext } from '@/lib/datum'
 import { wertGebindeCent } from '@/lib/einheiten'
@@ -25,6 +26,11 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/bestellung/
   const benutzer = await angemeldeterBenutzer()
   if (benutzer === null) {
     return Response.json({ fehler: 'Nicht angemeldet' }, { status: 401 })
+  }
+  // Bestellungen samt Preisen sind Sache der Betriebsleitung — siehe
+  // src/lib/berechtigungen.ts.
+  if (!istBetriebsleiter(benutzer.rolle)) {
+    return Response.json({ fehler: 'Bestellungen sind der Betriebsleitung vorbehalten' }, { status: 403 })
   }
 
   const bestellung = await prisma.bestellung.findFirst({

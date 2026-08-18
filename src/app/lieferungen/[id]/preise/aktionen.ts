@@ -22,7 +22,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { Abweichungsart, Abweichungsstatus } from '@/generated/prisma/enums'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { ekPreisCentAusGebindepreis } from '@/lib/einheiten'
 import { prisma } from '@/lib/prisma'
 
@@ -36,7 +36,7 @@ async function offenePreisabweichung(formular: FormData) {
   if (id === '') throw new Error('Keine Abweichung angegeben')
 
   // Über Id und Betrieb gesucht: die Id kommt aus einem Formular.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const abweichung = await prisma.abweichung.findFirst({
     where: { id, betriebId: betrieb.id },
     include: { lieferposition: { include: { artikel: true } } },

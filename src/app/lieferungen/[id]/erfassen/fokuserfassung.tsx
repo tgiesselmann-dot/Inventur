@@ -59,6 +59,8 @@ type Props = {
   lieferant: string
   belegNr: string
   datum: string
+  /** Ohne Preissicht schweigt die Fassung über Positionswerte und Summen. */
+  mitPreisen: boolean
   zeilen: ErfassungsPosition[]
   stamm: ErfassungsArtikel[]
   summe: Erfassungssumme
@@ -83,6 +85,7 @@ export function Fokuserfassung({
   lieferant,
   belegNr,
   datum,
+  mitPreisen,
   zeilen,
   stamm,
   summe,
@@ -148,6 +151,7 @@ export function Fokuserfassung({
       {gezeigt.art === 'suche' ? (
         <Suche
           stamm={stamm}
+          mitPreisen={mitPreisen}
           aufWahl={(artikel) => aufAnsicht({ art: 'neu', artikel, anzahl: '' })}
         />
       ) : gezeigt.art === 'neu' ? (
@@ -155,6 +159,7 @@ export function Fokuserfassung({
           artikel={gezeigt.artikel}
           anzahl={gezeigt.anzahl}
           summe={summe}
+          mitPreisen={mitPreisen}
           weiterText={
             gezeigt.anzahl === ''
               ? 'ohne Zeile zurück'
@@ -172,6 +177,7 @@ export function Fokuserfassung({
           artikel={offeneZeile.artikel}
           anzahl={alsEingabe(offeneZeile.lieferschein)}
           summe={summe}
+          mitPreisen={mitPreisen}
           weiterText={`${gebindeMenge(offeneZeile.lieferschein, offeneZeile.artikel.gebindeart)} · übernehmen`}
           aufAnzahl={(anzahl) => aufAendern(offeneZeile.id, anzahl)}
           aufWeiter={() => aufAnsicht({ art: 'liste' })}
@@ -181,6 +187,7 @@ export function Fokuserfassung({
         <Liste
           zeilen={zeilen}
           summe={summe}
+          mitPreisen={mitPreisen}
           aufZeile={(id) => aufAnsicht({ art: 'zeile', id })}
           aufNeu={() => aufAnsicht({ art: 'suche' })}
           aufSpeichern={aufSpeichern}
@@ -196,9 +203,12 @@ export function Fokuserfassung({
  */
 function Suche({
   stamm,
+  mitPreisen,
   aufWahl,
 }: {
   stamm: ErfassungsArtikel[]
+  /** Ohne Preissicht fehlt auch der Weg in die Stammdaten — der ist zu. */
+  mitPreisen: boolean
   aufWahl: (artikel: ErfassungsArtikel) => void
 }) {
   const [suche, setSuche] = useState('')
@@ -222,10 +232,15 @@ function Suche({
       <main className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden">
         {suche.trim() !== '' && treffer.length === 0 && (
           <p className="border-t border-border px-4 py-3 text-sm text-text-muted">
-            Kein Treffer im Artikelstamm.{' '}
-            <Link href="/artikel/neu" className="font-medium text-primary-text">
-              Artikel anlegen
-            </Link>
+            Kein Treffer im Artikelstamm.
+            {mitPreisen && (
+              <>
+                {' '}
+                <Link href="/artikel/neu" className="font-medium text-primary-text">
+                  Artikel anlegen
+                </Link>
+              </>
+            )}
           </p>
         )}
         {treffer.length > 0 && (
@@ -297,6 +312,7 @@ function Anzahleingabe({
   artikel,
   anzahl,
   summe,
+  mitPreisen,
   weiterText,
   aufAnzahl,
   aufWeiter,
@@ -305,6 +321,7 @@ function Anzahleingabe({
   artikel: ErfassungsArtikel
   anzahl: string
   summe: Erfassungssumme
+  mitPreisen: boolean
   weiterText: string
   aufAnzahl: (anzahl: string) => void
   aufWeiter: () => void
@@ -331,7 +348,11 @@ function Anzahleingabe({
           {anzahl !== '' && (
             <p className="flex justify-between px-1 font-mono text-sm text-text-muted">
               <span>{einheitenzeile(artikel, dezimaltext(anzahl))}</span>
-              <span>{positionswerttext(artikel, dezimaltext(anzahl)) ?? 'nicht bewertbar'}</span>
+              {/* Der Positionswert ist Geld — ohne Preissicht bleibt die
+                  Einheitenzeile allein stehen. */}
+              {mitPreisen && (
+                <span>{positionswerttext(artikel, dezimaltext(anzahl)) ?? 'nicht bewertbar'}</span>
+              )}
             </p>
           )}
         </div>
@@ -340,8 +361,8 @@ function Anzahleingabe({
       <footer className="shrink-0 border-t border-border bg-surface">
         <div className="flex min-h-tap items-center gap-tapgap px-4 py-1">
           <span className="text-sm text-text-muted">
-            {summe.positionen === 1 ? '1 Position' : `${summe.positionen} Positionen`} ·{' '}
-            {warenwerttext(summe)}
+            {summe.positionen === 1 ? '1 Position' : `${summe.positionen} Positionen`}
+            {mitPreisen && <> · {warenwerttext(summe)}</>}
           </span>
           <button
             type="button"
@@ -367,12 +388,14 @@ function Anzahleingabe({
 function Liste({
   zeilen,
   summe,
+  mitPreisen,
   aufZeile,
   aufNeu,
   aufSpeichern,
 }: {
   zeilen: ErfassungsPosition[]
   summe: Erfassungssumme
+  mitPreisen: boolean
   aufZeile: (id: string) => void
   aufNeu: () => void
   aufSpeichern: () => void
@@ -412,13 +435,17 @@ function Liste({
                           {einheitenzeile(zeile.artikel, zeile.lieferschein)}
                         </span>
                       </span>
-                      <span className="shrink-0 text-right">
-                        {wert === null ? (
-                          <span className="text-sm text-text-muted">nicht bewertbar</span>
-                        ) : (
-                          <span className="text-zeile">{alsEuro(wert)}</span>
-                        )}
-                      </span>
+                      {/* Der Positionswert ist Geld — ohne Preissicht endet
+                          die Zeile mit der Menge. */}
+                      {mitPreisen && (
+                        <span className="shrink-0 text-right">
+                          {wert === null ? (
+                            <span className="text-sm text-text-muted">nicht bewertbar</span>
+                          ) : (
+                            <span className="text-zeile">{alsEuro(wert)}</span>
+                          )}
+                        </span>
+                      )}
                     </button>
                   </li>
                 )
@@ -431,17 +458,19 @@ function Liste({
       {/* px-2 pt-2 der alten Fassung ist p-2 mit überschriebener Unterkante —
           exakt der Maskenfuss. */}
       <Maskenfuss>
-        {summe.unbewertbar > 0 && (
+        {mitPreisen && summe.unbewertbar > 0 && (
           <p className="px-2 pb-2 text-sm text-text-muted">
             {summe.unbewertbar === 1
               ? '1 Zeile ohne hinterlegten Preis — sie fehlt in der Summe.'
               : `${summe.unbewertbar} Zeilen ohne hinterlegten Preis — sie fehlen in der Summe.`}
           </p>
         )}
-        <p className="flex items-baseline justify-between px-2 pb-2">
-          <span className="text-beschriftung uppercase text-text-muted">Summe Lieferung</span>
-          <span className="text-titel">{warenwerttext(summe)}</span>
-        </p>
+        {mitPreisen && (
+          <p className="flex items-baseline justify-between px-2 pb-2">
+            <span className="text-beschriftung uppercase text-text-muted">Summe Lieferung</span>
+            <span className="text-titel">{warenwerttext(summe)}</span>
+          </p>
+        )}
         <div className="flex gap-tapgap">
           <Schaltflaeche art="sekundaer" onClick={aufNeu}>
             Position +

@@ -8,7 +8,7 @@
 
 import { notFound } from 'next/navigation'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsFormularwerte, kategorien } from '@/lib/artikelstamm'
 import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
@@ -23,7 +23,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   // Über Id und Betrieb gesucht: ein fremder Artikel ist damit schlicht nicht
   // gefunden — dieselbe Antwort wie für eine erfundene Kennung.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const artikel = await prisma.artikel.findFirst({ where: { id, betriebId: betrieb.id } })
   if (artikel === null) notFound()
 

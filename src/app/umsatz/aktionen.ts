@@ -22,7 +22,7 @@ import {
   type Kassenimportergebnis,
   type Kassenimportvorschau,
 } from '@/lib/kassenimport'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { prisma } from '@/lib/prisma'
 
 export type Importzustand =
@@ -34,7 +34,7 @@ export type Importzustand =
 /**
  */
 async function betriebId(): Promise<string> {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   return betrieb.id
 }
 

@@ -14,6 +14,7 @@
  *   npm run benutzer -- anna@example.org
  *   npm run benutzer -- anna@example.org --rolle mitarbeiter
  *   npm run benutzer -- anna@example.org --betrieb "Stadthafen Recklinghausen"
+ *   npm run benutzer -- anna@example.org --nur-rolle mitarbeiter
  *
  * `--betrieb` wird nur gebraucht, wenn noch kein Betrieb angelegt ist; sonst
  * kommt der Zugang zu dem einen vorhandenen.
@@ -22,6 +23,11 @@
  * nicht noch einmal angelegt, sondern nur die Verknüpfung nachgezogen. Ein
  * neues Passwort wird dabei gesetzt — das ist zugleich der Weg, ein vergessenes
  * zurückzusetzen.
+ *
+ * `--nur-rolle` stellt allein die Rolle eines bestehenden Zugangs um: kein
+ * Passwort, kein Supabase — nur die Zeile in der Zugangsliste. Der Weg, um die
+ * schon angelegten Konten auf Mitarbeiter zu setzen, ohne ihnen ein neues
+ * Passwort zu verpassen.
  */
 
 import { createInterface } from 'node:readline'
@@ -115,7 +121,18 @@ async function passwortAbfragen(frage: string): Promise<string> {
 async function main() {
   const email = (process.argv[2] ?? '').trim().toLowerCase()
   if (email === '' || email.startsWith('--') || !email.includes('@')) {
-    throw new Error('Aufruf: npm run benutzer -- adresse@example.org [--rolle mitarbeiter]')
+    throw new Error(
+      'Aufruf: npm run benutzer -- adresse@example.org [--rolle mitarbeiter | --nur-rolle mitarbeiter]',
+    )
+  }
+
+  const nurRolle = argument('nur-rolle')
+  if (nurRolle !== null) {
+    if (!ROLLEN.includes(nurRolle)) {
+      throw new Error(`Unbekannte Rolle "${nurRolle}" — bekannt sind: ${ROLLEN.join(', ')}`)
+    }
+    await rolleUmstellen(email, nurRolle)
+    return
   }
 
   const rolle = argument('rolle') ?? 'betriebsleiter'
@@ -171,6 +188,41 @@ async function main() {
     console.log(`Zugang eingetragen: ${benutzer.email} (${benutzer.rolle})`)
     console.log(`Betrieb:            ${benutzer.betrieb.name}`)
     console.log(`Konto:              ${konto.id}`)
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+/**
+ * Stellt allein die Rolle eines bestehenden Zugangs um.
+ *
+ * Bewusst ohne Supabase und ohne Passwortabfrage: die Rolle steht in der
+ * Zugangsliste, und wer nur sie ändern will, soll nicht nebenbei ein Passwort
+ * überschreiben. Ein unbekannter Zugang ist ein Fehler und kein Anlass, einen
+ * anzulegen — dafür gibt es den Aufruf ohne `--nur-rolle`.
+ */
+async function rolleUmstellen(email: string, rolle: string) {
+  const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL
+  if (!connectionString) throw new Error('DIRECT_URL oder DATABASE_URL muss gesetzt sein')
+
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 1 }) })
+
+  try {
+    const vorhanden = await prisma.benutzer.findUnique({ where: { email } })
+    if (vorhanden === null) {
+      throw new Error(
+        `Kein Zugang für ${email} — zum Anlegen den Aufruf ohne --nur-rolle verwenden`,
+      )
+    }
+
+    const benutzer = await prisma.benutzer.update({
+      where: { email },
+      data: { rolle },
+      include: { betrieb: { select: { name: true } } },
+    })
+
+    console.log(`Rolle umgestellt: ${benutzer.email} (${vorhanden.rolle} -> ${benutzer.rolle})`)
+    console.log(`Betrieb:          ${benutzer.betrieb.name}`)
   } finally {
     await prisma.$disconnect()
   }

@@ -2,9 +2,9 @@
  * Die Seitennavigation des Desktops — auf jeder Seite, nicht nur am Start.
  *
  * Dieselben Bereiche wie die Karten-Liste auf dem Telefon, aus derselben
- * Quelle (BEREICHE in src/lib/offene-punkte.ts) — und mit demselben Punkt, wo
- * etwas offen ist. Zwei Listen wären zwei Gelegenheiten, einen Bereich zu
- * vergessen.
+ * Quelle (sichtbareBereiche in src/lib/berechtigungen.ts, gespeist aus
+ * BEREICHE) — und mit demselben Punkt, wo etwas offen ist. Zwei Listen wären
+ * zwei Gelegenheiten, einen Bereich zu vergessen.
  *
  * `aktiv` sagt, welcher Eintrag die aktuelle Seite ist: er wird zur Fläche
  * statt zum Weg, denn ein Weg auf die Seite, auf der man steht, führt
@@ -17,11 +17,17 @@
 
 import Link from 'next/link'
 
-import { BEREICHE, type Bereichsschluessel } from '@/lib/offene-punkte'
+import { type Bereich, type Bereichsschluessel } from '@/lib/offene-punkte'
 import { Modusumschalter } from '@/ui/modus'
 
 type Props = {
   betrieb: string
+  /**
+   * Die Einträge kommen vom Aufrufer, gefiltert nach der Rolle des
+   * Angemeldeten (sichtbareBereiche in src/lib/berechtigungen.ts) — ein
+   * Mitarbeiter sieht hier nur, was er auch betreten darf.
+   */
+  bereiche: readonly Bereich[]
   jeBereich: Record<Bereichsschluessel, number>
   artikelzahl: number
   aktiv?: 'start' | Bereichsschluessel
@@ -31,6 +37,7 @@ type Props = {
 
 export function Seitennavigation({
   betrieb,
+  bereiche,
   jeBereich,
   artikelzahl,
   aktiv,
@@ -47,7 +54,7 @@ export function Seitennavigation({
 
       <nav className="flex flex-col gap-0.5">
         <Eintrag name="Start" ziel="/" aktiv={aktiv === 'start'} />
-        {BEREICHE.map((bereich) => (
+        {bereiche.map((bereich) => (
           <Eintrag
             key={bereich.schluessel}
             name={bereich.name}

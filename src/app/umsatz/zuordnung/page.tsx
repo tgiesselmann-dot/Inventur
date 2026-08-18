@@ -20,7 +20,7 @@
 
 import Link from 'next/link'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { zaehler } from '@/lib/kassenzuordnung-anzeige'
 import { schlageZuordnungVor, type Zuordnungskandidat } from '@/lib/kassenzuordnung'
 import { prisma } from '@/lib/prisma'
@@ -74,7 +74,7 @@ export default async function Page({ searchParams }: PageProps<'/umsatz/zuordnun
   const suche = typeof parameter.suche === 'string' ? parameter.suche.trim() : ''
   const anzahl = Math.max(SCHRITT, Number(parameter.anzahl) || SCHRITT)
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   const filter = {
     betriebId: betrieb.id,

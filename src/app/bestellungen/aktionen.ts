@@ -14,7 +14,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { BestellStatus } from '@/generated/prisma/enums'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { positionenAenderbar, statusText, wechselErlaubt } from '@/lib/bestellung'
 import { heute } from '@/lib/datum'
 import { prisma } from '@/lib/prisma'
@@ -74,7 +74,7 @@ export async function bestellungAnlegen(
 ): Promise<Aktionszustand> {
   let ziel: string
   try {
-    const betrieb = await aktuellerBetrieb()
+    const { betrieb } = await pflichtBetriebsleiter()
 
     const lieferant = String(formular.get('lieferant') ?? '').trim()
     if (lieferant === '') throw new Error('Ohne Lieferant gibt es keine Bestellung')
@@ -149,7 +149,7 @@ export async function positionenSpeichern(
     if (id === '') throw new Error('Keine Bestellung angegeben')
 
     // Über Id und Betrieb gesucht: die Id kommt aus einem Formular.
-    const betrieb = await aktuellerBetrieb()
+    const { betrieb } = await pflichtBetriebsleiter()
     const bestellung = await prisma.bestellung.findFirst({
       where: { id, betriebId: betrieb.id },
       include: {
@@ -251,7 +251,7 @@ export async function statusSetzen(formular: FormData): Promise<void> {
   const ziel = nach as BestellStatus
 
   // Über Id und Betrieb gesucht: die Id kommt aus einem Formular.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const bestellung = await prisma.bestellung.findFirst({
     where: { id, betriebId: betrieb.id },
   })
@@ -284,7 +284,7 @@ export async function entwurfVerwerfen(formular: FormData): Promise<void> {
   if (id === '') throw new Error('Keine Bestellung angegeben')
 
   // Über Id und Betrieb gesucht: die Id kommt aus einem Formular.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const bestellung = await prisma.bestellung.findFirst({
     where: { id, betriebId: betrieb.id },
     include: { _count: { select: { lieferungen: true } } },

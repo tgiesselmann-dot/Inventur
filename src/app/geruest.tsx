@@ -21,6 +21,7 @@
 import Link from 'next/link'
 
 import { pflichtBenutzer } from '@/lib/anmeldung'
+import { punkteFuerRolle, sichtbareBereiche } from '@/lib/berechtigungen'
 import { offenePunkte, punkteJeBereich, type Bereichsschluessel } from '@/lib/offene-punkte'
 import { offenlage } from '@/lib/offene-punkte-daten'
 import { prisma } from '@/lib/prisma'
@@ -41,12 +42,15 @@ export async function Geruest({ aktiv, children }: Props) {
     prisma.artikel.count({ where: { betriebId: betrieb.id, aktiv: true } }),
     offenlage(betrieb.id),
   ])
-  const jeBereich = punkteJeBereich(offenePunkte(lage))
+  // Nach der Rolle gefiltert wie auf der Startseite: ein Mitarbeiter sieht
+  // weder gesperrte Bereiche noch die Punkte, deren Weg für ihn zu ist.
+  const jeBereich = punkteJeBereich(punkteFuerRolle(offenePunkte(lage), benutzer.rolle))
 
   return (
     <div className="flex flex-1 flex-col md:flex-row">
       <Seitennavigation
         betrieb={betrieb.name}
+        bereiche={sichtbareBereiche(benutzer.rolle)}
         jeBereich={jeBereich}
         artikelzahl={artikelzahl}
         aktiv={aktiv}

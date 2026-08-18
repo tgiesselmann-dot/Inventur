@@ -13,7 +13,7 @@
 
 import Link from 'next/link'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsFaktor, ausEingabe, summe, VORGABE, alsText, zeile, type Zeile } from '@/lib/bestellung'
 import { vorschlagslage } from '@/lib/bestellung-daten'
 import { alsDatumstext, alsFeldwert, heute } from '@/lib/datum'
@@ -81,7 +81,7 @@ export default async function Page({ searchParams }: PageProps<'/bestellungen/vo
     saisonfaktor: einzel('saison'),
   })
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   const lage = await vorschlagslage(betrieb.id, eingabe)
   if (lage === null) {

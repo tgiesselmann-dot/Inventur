@@ -22,7 +22,7 @@ import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 
 import { Abweichungsart, Abweichungsstatus } from '@/generated/prisma/enums'
-import { aktuellerBetrieb, pflichtBenutzer } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsKurzdatum, heute, vorTagen, wochenbeginn } from '@/lib/datum'
 import { prisma } from '@/lib/prisma'
 import {
@@ -86,7 +86,7 @@ const SPALTEN =
 async function alleReklamieren() {
   'use server'
 
-  const benutzer = await pflichtBenutzer()
+  const benutzer = await pflichtBetriebsleiter()
 
   const offene = await prisma.abweichung.findMany({
     where: { betriebId: benutzer.betrieb.id, status: Abweichungsstatus.OFFEN },
@@ -132,7 +132,7 @@ export default async function Page({ searchParams }: PageProps<'/lieferungen/abw
   const fensterbeginn = vorTagen(ABWEICHUNGSFENSTER_TAGE, tag)
   const montag = wochenbeginn(tag)
 
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
 
   const [aktive, abgeschlossene, lieferungen, lieferanten] = await Promise.all([
     prisma.abweichung.findMany({

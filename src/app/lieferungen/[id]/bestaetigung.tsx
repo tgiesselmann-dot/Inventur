@@ -41,6 +41,7 @@ export type Beleg = {
 export function Bestaetigung({
   summe,
   leergut,
+  mitPreisen,
   beleg,
   sendet,
   aufBeleg,
@@ -50,6 +51,8 @@ export function Bestaetigung({
 }: {
   summe: Zusammenfassung
   leergut: Leergutzusammenfassung
+  /** Ohne Preissicht nennt die Bestätigung Mengen, aber keinen Fehlbetrag. */
+  mitPreisen: boolean
   beleg: Beleg
   sendet: boolean
   aufBeleg: (beleg: Beleg) => void
@@ -81,16 +84,19 @@ export function Bestaetigung({
           {/* Rot ist der Fehlbetrag nur, wo er eine Forderung ist. Eine
               Lieferung ohne Abweichung schuldet niemandem etwas, und ein nicht
               bewertbarer Betrag ist keine Forderung, sondern eine offene
-              Frage. Das offene Leergut-Pfand steht mit im Betrag. */}
-          <Wertzeile
-            name="Fehlbetrag"
-            wert={fehlbetragtext(summe, leergut)}
-            rolle={fehlbetragsrolle(summe, leergut)}
-          />
+              Frage. Das offene Leergut-Pfand steht mit im Betrag. Ohne
+              Preissicht fehlen beide Zeilen — der Fehlbetrag ist Geld. */}
+          {mitPreisen && (
+            <Wertzeile
+              name="Fehlbetrag"
+              wert={fehlbetragtext(summe, leergut)}
+              rolle={fehlbetragsrolle(summe, leergut)}
+            />
+          )}
           {/* Erscheint nur, wenn Artikel ohne Einkaufspreis betroffen sind. Der
               Fehlbetrag darüber ist dann unvollständig, und das steht hier,
               statt eine Zahl zu erfinden. */}
-          {summe.unbewertbar > 0 && (
+          {mitPreisen && summe.unbewertbar > 0 && (
             <Wertzeile
               name="ohne Preis, nicht bewertbar"
               wert={String(summe.unbewertbar)}

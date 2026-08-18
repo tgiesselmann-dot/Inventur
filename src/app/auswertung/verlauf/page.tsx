@@ -20,7 +20,7 @@
 
 import Link from 'next/link'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { schwundquotentext } from '@/lib/auswertung'
 import { alsDatumstext, alsKurzdatum } from '@/lib/datum'
 import {
@@ -61,7 +61,7 @@ const SPALTEN =
   'md:grid md:grid-cols-[132px_72px_minmax(0,1fr)_104px_120px_128px] md:items-center md:gap-x-4'
 
 export default async function Page() {
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const lage = await verlaufslage(betrieb.id)
 
   if (lage.punkte.length === 0) {

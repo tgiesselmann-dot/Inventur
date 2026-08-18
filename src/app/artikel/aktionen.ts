@@ -16,7 +16,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { leseArtikelformular } from '@/lib/artikelstamm'
 import { prisma } from '@/lib/prisma'
 
@@ -61,7 +61,7 @@ export async function artikelAnlegen(
 ): Promise<Speicherzustand> {
   let ziel: string
   try {
-    const betrieb = await aktuellerBetrieb()
+    const { betrieb } = await pflichtBetriebsleiter()
 
     const satz = leseArtikelformular(formular)
 
@@ -96,7 +96,7 @@ export async function artikelSpeichern(
 
     // Über Id und Betrieb gesucht: die Id kommt aus einem Formular, und ein
     // Formular kann jede Id tragen.
-    const betrieb = await aktuellerBetrieb()
+    const { betrieb } = await pflichtBetriebsleiter()
     const artikel = await prisma.artikel.findFirst({ where: { id, betriebId: betrieb.id } })
     if (artikel === null) throw new Error('Artikel nicht gefunden')
 

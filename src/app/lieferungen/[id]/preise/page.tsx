@@ -16,7 +16,7 @@
 import { notFound } from 'next/navigation'
 
 import { Abweichungsart, Abweichungsstatus } from '@/generated/prisma/enums'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsDatumstext } from '@/lib/datum'
 import { istKennung } from '@/lib/kennung'
 import { prisma } from '@/lib/prisma'
@@ -33,7 +33,7 @@ export default async function Page({ params }: PageProps<'/lieferungen/[id]/prei
   if (!istKennung(id)) notFound()
 
   // Über Id und Betrieb gesucht: eine fremde Lieferung ist damit nicht gefunden.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const lieferung = await prisma.lieferung.findFirst({
     where: { id, betriebId: betrieb.id },
     select: { id: true, lieferant: true, belegNr: true, datum: true },

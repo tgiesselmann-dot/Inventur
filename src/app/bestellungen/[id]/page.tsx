@@ -32,7 +32,7 @@ import {
   zeile as vorschlagszeile,
   type Bestellzeile,
 } from '@/lib/bestellung'
-import { aktuellerBetrieb } from '@/lib/anmeldung'
+import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { alsMenge } from '@/lib/auswertung'
 import { vorschlagslage } from '@/lib/bestellung-daten'
 import {
@@ -58,7 +58,7 @@ export default async function Page({ params }: PageProps<'/bestellungen/[id]'>) 
   if (!istKennung(id)) notFound()
 
   // Über Id und Betrieb gesucht: eine fremde Bestellung ist damit nicht gefunden.
-  const betrieb = await aktuellerBetrieb()
+  const { betrieb } = await pflichtBetriebsleiter()
   const bestellung = await prisma.bestellung.findFirst({
     where: { id, betriebId: betrieb.id },
     include: {
