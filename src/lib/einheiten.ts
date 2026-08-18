@@ -56,7 +56,7 @@ export class EinheitenFehler extends Error {
   }
 }
 
-function zuDecimal(wert: Menge, feld: string): Decimal {
+function zuDecimal(wert: Menge, feld: string, negativErlaubt = false): Decimal {
   let dezimal: Decimal
   try {
     dezimal = new Decimal(wert)
@@ -66,7 +66,7 @@ function zuDecimal(wert: Menge, feld: string): Decimal {
   if (!dezimal.isFinite()) {
     throw new EinheitenFehler(`${feld} ist keine endliche Zahl: ${String(wert)}`)
   }
-  if (dezimal.isNegative()) {
+  if (!negativErlaubt && dezimal.isNegative()) {
     throw new EinheitenFehler(`${feld} darf nicht negativ sein: ${dezimal.toString()}`)
   }
   return dezimal
@@ -201,12 +201,18 @@ export function gebindeFuerEinheiten(
  * Kästen liefert — ein aufgerundeter Bestand behauptete dagegen einen Kasten,
  * der nicht da ist. Beim Einzelflaschen-Artikel ist das Ergebnis die
  * Flaschenzahl selbst.
+ *
+ * Negative Einheiten sind hier erlaubt, als einziger Stelle dieser Datei: der
+ * fortgeschriebene Bestand (Zählung plus Lieferungen minus Verkäufe) läuft ins
+ * Minus, sobald seit der Zählung mehr abging als da war — Schankmass,
+ * Rundung der Rezeptur, Zählfehler. Das Minus ist dann die Auskunft und kein
+ * Datenfehler; abgewiesen stürzte die ganze Seite ab, die es zeigen will.
  */
 export function gebindeAusEinheiten(
   artikel: { einheitenProGebinde: number },
   einheiten: Menge,
 ): Decimal {
-  return zuDecimal(einheiten, 'einheiten').div(gebindegroesse(artikel))
+  return zuDecimal(einheiten, 'einheiten', true).div(gebindegroesse(artikel))
 }
 
 /** Die Felder einer Kassenzuordnung, die für die Umrechnung gebraucht werden. */

@@ -251,6 +251,13 @@ describe('gebindeAusEinheiten', () => {
     const einheiten = einheitenAusGebinden(kastenBier, new Decimal('2.5'))
     expect(gebindeAusEinheiten(kastenBier, einheiten).toString()).toBe('2.5')
   })
+
+  it('lässt einen negativen Bestand durch — mehr verkauft als gezählt', () => {
+    // Der fortgeschriebene Bestand darf ins Minus laufen; als Auskunft gehört
+    // das Minus angezeigt. Abgewiesen stürzte die Bestellseite ab, die es zeigt.
+    expect(gebindeAusEinheiten(einzelflascheGin, '-0.16').toString()).toBe('-0.16')
+    expect(gebindeAusEinheiten(kastenBier, -12).toString()).toBe('-0.5')
+  })
 })
 
 describe('wertGebindeCent', () => {
