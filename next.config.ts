@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
     "192.168.2.196",
     "macbook-pro-von-tim.local",
   ],
+  // Die Dörlemann-Vorlage liegt als Datei neben dem Code. Auf Vercel packt der
+  // Build nur, was er im Code nachverfolgen kann — diese Zeile stellt sicher,
+  // dass die Vorlage im Paket der Route liegt und readFile sie dort findet.
+  outputFileTracingIncludes: {
+    '/api/bestellung/*/doerlemann': ['vorlagen/**/*'],
+  },
   experimental: {
     // Erkennt fehlendes Netz zuverlässiger als navigator.onLine, das im WLAN
     // ohne Anschluss nach draussen weiterhin "online" meldet — im Lager genau

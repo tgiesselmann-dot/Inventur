@@ -35,6 +35,11 @@ import {
 import { aktuellerBetrieb } from '@/lib/anmeldung'
 import { alsMenge } from '@/lib/auswertung'
 import { vorschlagslage } from '@/lib/bestellung-daten'
+import {
+  DOERLEMANN_MAIL,
+  formularmengen,
+  istDoerlemann,
+} from '@/lib/doerlemann-formular'
 import { gebindeAusEinheiten } from '@/lib/einheiten'
 import { alsDatumstext } from '@/lib/datum'
 import { istKennung } from '@/lib/kennung'
@@ -130,6 +135,21 @@ export default async function Page({ params }: PageProps<'/bestellungen/[id]'>) 
   // Maske zum Dazunehmen bereit, ist aber keine Position. Gerechnet wird mit den
   // exakten Mengen der Positionen, nicht mit ihrem Anzeigetext.
   const bestellt = zeilen.filter((zeile) => zeile.mengeGebinde > 0)
+
+  // Geht die Bestellung an Dörlemann, gibt es das Formular als Excel — und
+  // vorab die Auskunft, was beim Übertragen auffällt: Artikel ohne
+  // Formularzeile und Wein, der auf volle Kartons aufgerundet wird. Beides
+  // rechnet dieselbe Stelle, die auch die Datei füllt.
+  const doerlemann = istDoerlemann(bestellung.lieferant)
+  const formular = doerlemann
+    ? formularmengen(
+        bestellt.map((zeile) => ({
+          name: zeile.name,
+          lieferGebindeText: zeile.lieferGebindeText,
+          anzahlGebinde: zeile.mengeGebinde,
+        })),
+      )
+    : null
   const geliefertStand = lieferstand(
     stamm.flatMap((artikel) => {
       const position = positionen.get(artikel.id)
@@ -252,6 +272,30 @@ export default async function Page({ params }: PageProps<'/bestellungen/[id]'>) 
           Als CSV
         </a>
 
+        {doerlemann && (
+          <>
+            <a
+              href={`/api/bestellung/${bestellung.id}/doerlemann`}
+              className={flaechenfassung({ art: 'sekundaer' })}
+            >
+              Dörlemann-Formular
+            </a>
+            {/*
+              Öffnet das Mail-Programm mit Empfänger und Betreff. Die Datei
+              anhängen muss die Hand — mailto kennt keine Anhänge, und
+              versenden soll ohnehin der Mensch, nicht die App.
+            */}
+            <a
+              href={`mailto:${DOERLEMANN_MAIL}?subject=${encodeURIComponent(
+                `Getränkebestellung Stadthafen ${alsDatumstext(bestellung.datum)}`,
+              )}`}
+              className={flaechenfassung({ art: 'sekundaer' })}
+            >
+              Mail an Dörlemann
+            </a>
+          </>
+        )}
+
         {bestellung.status === BestellStatus.ENTWURF && (
           <form action={entwurfVerwerfen} className="ml-auto">
             <input type="hidden" name="bestellungId" value={bestellung.id} />
@@ -261,6 +305,34 @@ export default async function Page({ params }: PageProps<'/bestellungen/[id]'>) 
           </form>
         )}
       </div>
+
+      {/*
+        Was die Excel-Datei verschweigen würde, steht hier vorab: Positionen
+        ohne Formularzeile fehlen in der Datei ganz, und Wein wächst auf volle
+        Kartons. Beides fällt sonst erst dem Lieferanten auf — oder niemandem.
+      */}
+      {formular !== null && formular.ohneZeile.length > 0 && (
+        <p className="nur-schirm mt-3 text-xs text-text-muted">
+          Nicht auf dem Dörlemann-Formular und deshalb nicht in der Excel-Datei:{' '}
+          {formular.ohneZeile
+            .map((position) => `${position.name} (${position.lieferGebindeText})`)
+            .join(', ')}
+          . Diese Positionen brauchen einen eigenen Weg.
+        </p>
+      )}
+      {formular !== null && formular.aufgerundet.length > 0 && (
+        <p className="nur-schirm mt-3 text-xs text-text-muted">
+          Das Formular bestellt in vollen Gebinden, die Datei rundet deshalb auf:{' '}
+          {formular.aufgerundet
+            .map(
+              (eintrag) =>
+                `${eintrag.name} — aus ${eintrag.bestellt} Flaschen werden ${eintrag.formularMenge} ` +
+                `Kartons (${eintrag.formularGebinde}), also ${eintrag.entspricht} Flaschen`,
+            )
+            .join('; ')}
+          .
+        </p>
+      )}
 
       {bestellung.status === BestellStatus.ENTWURF && (
         <p className="nur-schirm mt-3 text-xs text-text-muted">
