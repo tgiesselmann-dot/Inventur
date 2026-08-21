@@ -252,6 +252,52 @@ export async function POST(
     }
   }
 
+  // Übermittelte Positions-Ids müssen zu dieser Lieferung gehören — die Id
+  // kommt aus dem Request, und ein Update über eine fremde Id schriebe sonst
+  // in die Lieferung eines anderen Betriebs.
+  const uebermittelt = positionen
+    .map((position) => position.id)
+    .filter((wert): wert is string => wert !== null)
+  if (uebermittelt.length > 0) {
+    const eigene = await prisma.lieferposition.findMany({
+      where: { lieferungId: id, id: { in: uebermittelt } },
+      select: { id: true },
+    })
+    const vorhandene = new Set(eigene.map((eintrag) => eintrag.id))
+    for (const positionsId of uebermittelt) {
+      if (!vorhandene.has(positionsId)) {
+        return Response.json(
+          { fehler: `Position ${positionsId} gehört nicht zu dieser Lieferung` },
+          { status: 400 },
+        )
+      }
+    }
+  }
+
+  // Eine angegebene Bestellposition muss zur Bestellung dieser Lieferung
+  // gehören — sonst hielte die Zeile fest, von etwas Fremdem abzuweichen.
+  const bestellbezuege = positionen
+    .map((position) => position.bestellpositionId)
+    .filter((wert): wert is string => wert !== null)
+  if (bestellbezuege.length > 0) {
+    const passende =
+      lieferung.bestellungId === null
+        ? []
+        : await prisma.bestellposition.findMany({
+            where: { bestellungId: lieferung.bestellungId, id: { in: bestellbezuege } },
+            select: { id: true },
+          })
+    const erlaubte = new Set(passende.map((eintrag) => eintrag.id))
+    for (const bezugsId of bestellbezuege) {
+      if (!erlaubte.has(bezugsId)) {
+        return Response.json(
+          { fehler: `Bestellposition ${bezugsId} gehört nicht zur Bestellung dieser Lieferung` },
+          { status: 400 },
+        )
+      }
+    }
+  }
+
   // Ohne Preissicht (darfPreiseSehen) bekommt die Maske die Lieferscheinpreise
   // gar nicht erst — schickte diese Route deren `null` in die Datenbank, wäre
   // jeder von der Betriebsleitung erfasste Preis nach dem ersten

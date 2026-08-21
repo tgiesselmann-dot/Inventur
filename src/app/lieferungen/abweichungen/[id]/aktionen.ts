@@ -25,7 +25,8 @@ import { prisma } from '@/lib/prisma'
 import { istAktiv, naechsterSchritt } from '@/lib/reklamation'
 import { centAusEingabe } from '@/lib/wareneingang'
 
-async function aktiveAbweichung(formular: FormData) {
+/** Die Abweichung aus dem Formular, gegen Rolle und Betrieb geprüft. */
+async function eigeneAbweichung(formular: FormData) {
   const id = String(formular.get('abweichungId') ?? '')
   if (id === '') throw new Error('Keine Abweichung angegeben')
 
@@ -35,10 +36,15 @@ async function aktiveAbweichung(formular: FormData) {
     where: { id, betriebId: benutzer.betrieb.id },
   })
   if (abweichung === null) throw new Error('Abweichung nicht gefunden')
+  return { ...abweichung, benutzerId: benutzer.benutzerId }
+}
+
+async function aktiveAbweichung(formular: FormData) {
+  const abweichung = await eigeneAbweichung(formular)
   if (!istAktiv(abweichung.status)) {
     throw new Error('Dieser Vorgang ist abgeschlossen — sein Status ändert sich nicht mehr')
   }
-  return { ...abweichung, benutzerId: benutzer.benutzerId }
+  return abweichung
 }
 
 /** Statuswechsel samt Verlaufsereignis, als eine Schreiboperation. */
@@ -135,13 +141,12 @@ export async function gutschriftEintragen(formular: FormData): Promise<void> {
  * gesagt wurde, gehört festgehalten, egal wie der Vorgang ausging.
  */
 export async function notizSpeichern(formular: FormData): Promise<void> {
-  const id = String(formular.get('abweichungId') ?? '')
-  if (id === '') throw new Error('Keine Abweichung angegeben')
+  const abweichung = await eigeneAbweichung(formular)
 
   const text = String(formular.get('notiz') ?? '').trim()
   await prisma.abweichung.update({
-    where: { id },
+    where: { id: abweichung.id },
     data: { notiz: text === '' ? null : text },
   })
-  neuZeichnen(id)
+  neuZeichnen(abweichung.id)
 }
