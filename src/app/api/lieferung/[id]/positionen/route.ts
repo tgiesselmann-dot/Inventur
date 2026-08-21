@@ -52,9 +52,13 @@ type Leergut = {
 
 const ARTEN = new Set<string>(Object.values(Abweichungsart))
 
-/** Eine Menge, wie sie über die Leitung kommt: Dezimaltext, nie negativ. */
+/**
+ * Eine Menge, wie sie über die Leitung kommt: Dezimaltext, nie negativ.
+ * Höchstens acht Vorkommastellen — das Limit der Spalte Decimal(10,2); ohne
+ * die Grenze käme ein längerer Wert als Datenbankfehler statt als 400 zurück.
+ */
 function menge(wert: unknown, feld: string): string {
-  if (typeof wert !== 'string' || wert === '' || !/^\d+(\.\d{1,2})?$/.test(wert)) {
+  if (typeof wert !== 'string' || wert === '' || !/^\d{1,8}(\.\d{1,2})?$/.test(wert)) {
     throw new Error(`${feld} ist keine Menge mit höchstens zwei Nachkommastellen: ${String(wert)}`)
   }
   return wert

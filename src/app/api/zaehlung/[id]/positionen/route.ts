@@ -26,6 +26,7 @@ import type { NextRequest } from 'next/server'
 import { ZaehlungStatus } from '@/generated/prisma/enums'
 import { angemeldeterBenutzer } from '@/lib/anmeldung'
 import { EinheitenFehler, gesamtEinheiten } from '@/lib/einheiten'
+import { gueltigerMengentext } from '@/lib/zaehlung'
 import { prisma } from '@/lib/prisma'
 
 type Position = {
@@ -60,6 +61,14 @@ function lesePositionen(rumpf: unknown): Position[] {
     }
     if (typeof anzahlGebinde !== 'string' || typeof anzahlEinzeln !== 'string') {
       throw new Error(`Position ${index} (${artikelId}): Mengen müssen Text sein`)
+    }
+    // Dieselben Grenzen, die der Ziffernblock am Gerät erzwingt. Hier noch
+    // einmal, weil die Spalte Decimal(10,2) ist: ein zu grosser Wert würde als
+    // Datenbankfehler zurückkommen, eine dritte Nachkommastelle still gerundet.
+    if (!gueltigerMengentext(anzahlGebinde) || !gueltigerMengentext(anzahlEinzeln)) {
+      throw new Error(
+        `Position ${index} (${artikelId}): Mengen dürfen höchstens vier Vorkomma- und zwei Nachkommastellen haben`,
+      )
     }
     // Der Zeitpunkt kommt vom Gerät, nicht vom Server: ein Wert, der drei
     // Stunden im Flugmodus lag, ist am Abend gezählt worden und nicht in dem

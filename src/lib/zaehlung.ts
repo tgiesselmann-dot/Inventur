@@ -68,6 +68,24 @@ const MAX_NACHKOMMA = 2
  */
 const MAX_VORKOMMA = 4
 
+/** Aus den beiden Grenzen gebaut, damit Regel und Regex nicht auseinanderlaufen. */
+const MENGENTEXT = new RegExp(`^\\d{1,${MAX_VORKOMMA}}(\\.\\d{1,${MAX_NACHKOMMA}})?$`)
+
+/**
+ * Ob ein Mengentext im Punktformat die Eingabegrenzen einhält — dieselben, die
+ * `tasteAnwenden` und `eingabetext` am Gerät erzwingen.
+ *
+ * Für die Zählroute: sie muss die Grenzen auch dann halten, wenn der Wert nicht
+ * aus dieser Maske kommt. Ohne die Prüfung liefe "1e400" bis in die Datenbank
+ * und käme als unbehandelter Overflow zurück — die Offline-Warteschlange
+ * wiederholte den abgelehnten Stapel dann endlos. Und "0.005" würde Postgres
+ * still auf 0,01 runden: aus einer Fehleingabe würde ein Bestand, den niemand
+ * gezählt hat.
+ */
+export function gueltigerMengentext(text: string): boolean {
+  return MENGENTEXT.test(text)
+}
+
 const GEBINDE_BESCHRIFTUNG: Record<Gebindeart, string> = {
   [Gebindeart.KASTEN]: 'Kästen',
   [Gebindeart.KARTON]: 'Kartons',

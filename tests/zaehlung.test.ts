@@ -8,6 +8,7 @@ import {
   dezimaltext,
   eingabetext,
   felder,
+  gueltigerMengentext,
   regelFuer,
   fortschritt,
   fortschrittsanteil,
@@ -253,6 +254,32 @@ describe('dezimaltext', () => {
   it('vervollständigt einen angefangenen Wert — wer "2," stehen lässt, meint zwei', () => {
     expect(dezimaltext('2,')).toBe('2')
     expect(dezimaltext('0,')).toBe('0')
+  })
+})
+
+describe('gueltigerMengentext', () => {
+  it('nimmt an, was dezimaltext erzeugt', () => {
+    expect(gueltigerMengentext('0')).toBe(true)
+    expect(gueltigerMengentext('2')).toBe(true)
+    expect(gueltigerMengentext('2.5')).toBe(true)
+    expect(gueltigerMengentext('0.25')).toBe(true)
+  })
+
+  it('hält die Grenzen des Ziffernblocks — vier Vorkomma-, zwei Nachkommastellen', () => {
+    expect(gueltigerMengentext('9999')).toBe(true)
+    expect(gueltigerMengentext('9999.99')).toBe(true)
+    expect(gueltigerMengentext('10000')).toBe(false)
+    expect(gueltigerMengentext('0.005')).toBe(false)
+  })
+
+  it('weist ab, was nur Decimal verstünde — die Datenbank täte es nicht', () => {
+    expect(gueltigerMengentext('1e400')).toBe(false)
+    expect(gueltigerMengentext('-5')).toBe(false)
+    expect(gueltigerMengentext('NaN')).toBe(false)
+    expect(gueltigerMengentext('Infinity')).toBe(false)
+    expect(gueltigerMengentext('')).toBe(false)
+    expect(gueltigerMengentext('2,5')).toBe(false)
+    expect(gueltigerMengentext(' 2')).toBe(false)
   })
 })
 
