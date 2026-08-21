@@ -613,8 +613,16 @@ model Lieferposition {
   bestellposition Bestellposition? @relation(fields: [bestellpositionId], references: [id], onDelete: Restrict)
   abweichungen    Abweichung[]
 
+  /// Dieselbe Ware nur einmal je Lieferung: gleicher Artikel mit gleichem
+  /// Bestellbezug wird zusammengeführt, nicht verdoppelt — ein Doppelbestand
+  /// ginge als Ware in die Bewertung. Zweimal derselbe Artikel bleibt mit
+  /// verschiedenem Bezug möglich (Ersatzartikel neben der bestellten Ware).
+  /// Postgres sieht zwei NULL-Bezüge als verschieden; für unbestellte Ware
+  /// hält deshalb ein partieller Unique-Index aus der Migration
+  /// lieferposition_eindeutig dieselbe Regel. Der frühere Index auf
+  /// lieferungId steckt als linker Rand in diesem Schlüssel.
+  @@unique([lieferungId, artikelId, bestellpositionId])
   @@index([betriebId])
-  @@index([lieferungId])
   @@index([artikelId])
   @@index([bestellpositionId])
   @@map("lieferposition")

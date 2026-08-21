@@ -34,6 +34,7 @@ import {
   type ErfassungsPosition,
 } from '@/lib/wareneingang'
 import { dezimaltext } from '@/lib/zaehlung'
+import { zeilenversand } from '@/lib/zeilenversand'
 import { Vollbild } from '@/ui/vollbild'
 
 import { Fokuserfassung, type FokusAnsicht } from './fokuserfassung'
@@ -73,63 +74,75 @@ export function Erfassungsmaske(props: Props) {
   const summe = useMemo(() => erfassungssumme(zeilen), [zeilen])
 
   /**
+   * Reiht die Sends je Zeile hintereinander — wie in der Prüfmaske: zwei
+   * schnelle Änderungen an einer neuen Zeile dürfen nicht als zwei „lege neu
+   * an" hinausgehen, bevor die Id zurück ist.
+   */
+  const [versand] = useState(zeilenversand)
+
+  /**
    * Schickt den Stand einer Zeile zum Server — dieselbe Route und derselbe
    * Rumpf wie in der Prüfmaske. Die Maske wartet nicht auf die Antwort; nur die
    * Id einer neu angelegten Zeile wird nachgetragen, damit die nächste Änderung
    * dieselbe Zeile trifft und keine zweite anlegt.
    */
   const senden = useCallback(
-    async (position: ErfassungsPosition) => {
-      try {
-        const antwort = await fetch(`/api/lieferung/${props.lieferungId}/positionen`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            positionen: [
-              {
-                id: position.id.startsWith('neu:') ? null : position.id,
-                artikelId: position.artikel.id,
-                bestellpositionId: position.bestellpositionId,
-                lieferschein: position.lieferschein,
-                tatsaechlich: position.tatsaechlich,
-                ekPreisCentLieferschein: position.ekPreisCentLieferschein,
-                nachlieferungZugesagtBis: position.nachlieferungZugesagtBis,
-                abweichungen: position.abweichungen,
-              },
-            ],
-          }),
-        })
-        const ergebnis = (await antwort.json()) as {
-          gespeichert?: { artikelId: string; id: string }[]
-          fehler?: string
-        }
-        if (!antwort.ok) {
+    (position: ErfassungsPosition) =>
+      versand.reihe(position.id, async (vergebene) => {
+        const kennung = position.id.startsWith('neu:') ? vergebene : position.id
+        try {
+          const antwort = await fetch(`/api/lieferung/${props.lieferungId}/positionen`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              positionen: [
+                {
+                  id: kennung,
+                  artikelId: position.artikel.id,
+                  bestellpositionId: position.bestellpositionId,
+                  lieferschein: position.lieferschein,
+                  tatsaechlich: position.tatsaechlich,
+                  ekPreisCentLieferschein: position.ekPreisCentLieferschein,
+                  nachlieferungZugesagtBis: position.nachlieferungZugesagtBis,
+                  abweichungen: position.abweichungen,
+                },
+              ],
+            }),
+          })
+          const ergebnis = (await antwort.json()) as {
+            gespeichert?: { artikelId: string; id: string }[]
+            fehler?: string
+          }
+          if (!antwort.ok) {
+            setFehler({
+              position,
+              text: ergebnis.fehler ?? 'Die Position konnte nicht gespeichert werden.',
+            })
+            return
+          }
+          setFehler(null)
+          const vergeben = ergebnis.gespeichert?.[0]
+          if (vergeben !== undefined && kennung === null) {
+            versand.vergeben(position.id, vergeben.id)
+            setZeilen((bisher) =>
+              bisher.map((zeile) =>
+                zeile.id === position.id ? { ...zeile, id: vergeben.id } : zeile,
+              ),
+            )
+            setAnsicht((bisher) =>
+              bisher.art === 'zeile' && bisher.id === position.id
+                ? { art: 'zeile', id: vergeben.id }
+                : bisher,
+            )
+          }
+        } catch {
           setFehler({
             position,
-            text: ergebnis.fehler ?? 'Die Position konnte nicht gespeichert werden.',
+            text: 'Ohne Netz lässt sich nichts speichern. Die Eingabe steht noch auf dem Gerät.',
           })
-          return
         }
-        setFehler(null)
-        const vergeben = ergebnis.gespeichert?.[0]
-        if (vergeben !== undefined && position.id.startsWith('neu:')) {
-          setZeilen((bisher) =>
-            bisher.map((zeile) => (zeile.id === position.id ? { ...zeile, id: vergeben.id } : zeile)),
-          )
-          setAnsicht((bisher) =>
-            bisher.art === 'zeile' && bisher.id === position.id
-              ? { art: 'zeile', id: vergeben.id }
-              : bisher,
-          )
-        }
-      } catch {
-        setFehler({
-          position,
-          text: 'Ohne Netz lässt sich nichts speichern. Die Eingabe steht noch auf dem Gerät.',
-        })
-      }
-    },
-    [props.lieferungId],
+      }),
+    [props.lieferungId, versand],
   )
 
   /**

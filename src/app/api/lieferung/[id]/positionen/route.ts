@@ -328,12 +328,33 @@ export async function POST(
             : new Date(`${position.nachlieferungZugesagtBis}T00:00:00Z`),
       }
 
-      const zeile =
+      // „Lege neu an" heisst: dieselbe Ware dieser Lieferung — gleicher
+      // Artikel, gleicher Bestellbezug — wird zusammengeführt statt verdoppelt.
+      // Ein doppelt abgeschickter Anlege-Request (Wiederholung nach Timeout,
+      // zweites Gerät an der Rampe) hinterlässt so eine Zeile; ein zweiter,
+      // andersartiger Eintrag desselben Artikels (Ersatzartikel neben der
+      // bestellten Ware) trägt einen anderen Bestellbezug und bleibt möglich.
+      // Die Unique-Indizes im Schema halten die Regel auch gegen das Rennen
+      // zweier gleichzeitiger Transaktionen.
+      const bestehende =
         position.id === null
-          ? await tx.lieferposition.create({
-              data: { betriebId: lieferung.betriebId, lieferungId: id, ...daten },
+          ? await tx.lieferposition.findFirst({
+              where: {
+                lieferungId: id,
+                artikelId: position.artikelId,
+                bestellpositionId: position.bestellpositionId,
+              },
+              select: { id: true },
             })
-          : await tx.lieferposition.update({ where: { id: position.id }, data: daten })
+          : null
+      const zeile =
+        position.id !== null
+          ? await tx.lieferposition.update({ where: { id: position.id }, data: daten })
+          : bestehende !== null
+            ? await tx.lieferposition.update({ where: { id: bestehende.id }, data: daten })
+            : await tx.lieferposition.create({
+                data: { betriebId: lieferung.betriebId, lieferungId: id, ...daten },
+              })
 
       await tx.abweichung.deleteMany({
         where: {

@@ -42,6 +42,7 @@ import {
   type PruefPosition,
   type WareneingangArtikel,
 } from '@/lib/wareneingang'
+import { zeilenversand } from '@/lib/zeilenversand'
 import { Hinweisleiste } from '@/ui/hinweisleiste'
 import { Vollbild } from '@/ui/vollbild'
 
@@ -118,70 +119,85 @@ export function Pruefmaske(props: Props) {
   const leergutSumme = useMemo(() => leergutzusammenfassung(leergut), [leergut])
 
   /**
+   * Reiht die Sends je Zeile hintereinander: zwei schnelle Änderungen an einer
+   * neuen Zeile gingen sonst beide als „lege neu an" hinaus, bevor die Id
+   * zurück ist — und aus einer Palette würden zwei Positionen.
+   */
+  const [versand] = useState(zeilenversand)
+
+  /**
    * Schickt den Stand einer Zeile zum Server. Die Maske wartet nicht darauf —
    * der Bildschirm ist schon weiter, wenn die Antwort kommt. Nur die Id einer
    * neu angelegten Zeile wird nachgetragen, damit die nächste Änderung dieselbe
    * Zeile trifft und keine zweite anlegt.
    */
   const senden = useCallback(
-    async (position: PruefPosition) => {
-      try {
-        const antwort = await fetch(`/api/lieferung/${props.lieferungId}/positionen`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            positionen: [
-              {
-                id: position.id.startsWith('neu:') ? null : position.id,
-                artikelId: position.artikel.id,
-                // Muss mit, sonst räumt die Route den Bestellbezug ab und die
-                // Spalte "bestellt" wäre nach dem nächsten Laden leer.
-                bestellpositionId: position.bestellpositionId,
-                lieferschein: position.lieferschein,
-                tatsaechlich: position.tatsaechlich,
-                ekPreisCentLieferschein: position.ekPreisCentLieferschein,
-                nachlieferungZugesagtBis: position.nachlieferungZugesagtBis,
-                abweichungen: position.abweichungen,
-              },
-            ],
-          }),
-        })
-        const ergebnis = (await antwort.json()) as {
-          gespeichert?: { artikelId: string; id: string }[]
-          fehler?: string
-        }
-        if (!antwort.ok) {
+    (position: PruefPosition) =>
+      versand.reihe(position.id, async (vergebene) => {
+        // Trug die Zeile beim Antippen noch die vorläufige Kennung, hat der
+        // vorige Send ihr inzwischen vielleicht eine Id besorgt — dann ist
+        // dies ein Aktualisieren, kein zweites Anlegen.
+        const kennung = position.id.startsWith('neu:') ? vergebene : position.id
+        try {
+          const antwort = await fetch(`/api/lieferung/${props.lieferungId}/positionen`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              positionen: [
+                {
+                  id: kennung,
+                  artikelId: position.artikel.id,
+                  // Muss mit, sonst räumt die Route den Bestellbezug ab und die
+                  // Spalte "bestellt" wäre nach dem nächsten Laden leer.
+                  bestellpositionId: position.bestellpositionId,
+                  lieferschein: position.lieferschein,
+                  tatsaechlich: position.tatsaechlich,
+                  ekPreisCentLieferschein: position.ekPreisCentLieferschein,
+                  nachlieferungZugesagtBis: position.nachlieferungZugesagtBis,
+                  abweichungen: position.abweichungen,
+                },
+              ],
+            }),
+          })
+          const ergebnis = (await antwort.json()) as {
+            gespeichert?: { artikelId: string; id: string }[]
+            fehler?: string
+          }
+          if (!antwort.ok) {
+            setFehler({
+              art: 'position',
+              position,
+              text: ergebnis.fehler ?? 'Die Position konnte nicht gespeichert werden.',
+            })
+            return
+          }
+          setFehler(null)
+          const vergeben = ergebnis.gespeichert?.[0]
+          if (vergeben !== undefined && kennung === null) {
+            versand.vergeben(position.id, vergeben.id)
+            setPositionen((bisher) =>
+              bisher.map((zeile) =>
+                zeile.id === position.id ? { ...zeile, id: vergeben.id } : zeile,
+              ),
+            )
+            // Die geöffnete Zeile zeigt noch auf die vorläufige Id. Ohne diesen
+            // Nachzug fiele die Maske in dem Moment zur Liste zurück, in dem die
+            // Antwort eintrifft — mitten in der Eingabe.
+            setAnsicht((bisher) =>
+              bisher.art === 'zeile' && bisher.id === position.id
+                ? { art: 'zeile', id: vergeben.id }
+                : bisher,
+            )
+          }
+        } catch {
           setFehler({
             art: 'position',
             position,
-            text: ergebnis.fehler ?? 'Die Position konnte nicht gespeichert werden.',
+            text: 'Ohne Netz lässt sich nichts speichern. Die Eingabe steht noch auf dem Gerät.',
           })
-          return
         }
-        setFehler(null)
-        const vergeben = ergebnis.gespeichert?.[0]
-        if (vergeben !== undefined && position.id.startsWith('neu:')) {
-          setPositionen((bisher) =>
-            bisher.map((zeile) => (zeile.id === position.id ? { ...zeile, id: vergeben.id } : zeile)),
-          )
-          // Die geöffnete Zeile zeigt noch auf die vorläufige Id. Ohne diesen
-          // Nachzug fiele die Maske in dem Moment zur Liste zurück, in dem die
-          // Antwort eintrifft — mitten in der Eingabe.
-          setAnsicht((bisher) =>
-            bisher.art === 'zeile' && bisher.id === position.id
-              ? { art: 'zeile', id: vergeben.id }
-              : bisher,
-          )
-        }
-      } catch {
-        setFehler({
-          art: 'position',
-          position,
-          text: 'Ohne Netz lässt sich nichts speichern. Die Eingabe steht noch auf dem Gerät.',
-        })
-      }
-    },
-    [props.lieferungId],
+      }),
+    [props.lieferungId, versand],
   )
 
   const uebernehmen = useCallback(
