@@ -23,6 +23,7 @@ import {
   type Kassenimportvorschau,
 } from '@/lib/kassenimport'
 import { pflichtBetriebsleiter } from '@/lib/anmeldung'
+import { dekodiereCsv } from '@/lib/csv'
 import { prisma } from '@/lib/prisma'
 
 export type Importzustand =
@@ -38,13 +39,21 @@ async function betriebId(): Promise<string> {
   return betrieb.id
 }
 
-/** Liest die hochgeladene Datei aus dem Formular. */
+/**
+ * Liest die hochgeladene Datei aus dem Formular.
+ *
+ * Über dekodiereCsv statt datei.text(): text() liest stur UTF-8, und ein
+ * Kassenexport aus deutschem Windows käme als Windows-1252. "Grauburgunder"
+ * mit Ersatzzeichen würde zum zweiten, unzugeordneten Kassenartikel neben dem
+ * gepflegten — posBezeichnung ist der Schlüssel der Zuordnung, und der Schwund
+ * liefe still auseinander. Der Artikelimport nimmt denselben Weg.
+ */
 async function leseDatei(formular: FormData): Promise<{ name: string; inhalt: string }> {
   const datei = formular.get('datei')
   if (!(datei instanceof File) || datei.size === 0) {
     throw new Error('Keine Datei ausgewählt')
   }
-  return { name: datei.name, inhalt: await datei.text() }
+  return { name: datei.name, inhalt: dekodiereCsv(await datei.arrayBuffer()) }
 }
 
 function alsFehler(ursache: unknown): Importzustand {
