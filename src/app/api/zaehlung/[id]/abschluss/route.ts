@@ -48,6 +48,11 @@ export async function POST(_request: Request, ctx: RouteContext<'/api/zaehlung/[
     // wie ein Problem aussehen.
     return Response.json({ status: ZaehlungStatus.ABGESCHLOSSEN, fehlend: [], offeneLager: [] })
   }
+  if (zaehlung.status === ZaehlungStatus.VERWORFEN) {
+    // Wohl aber hier: ein Abschluss würde den Fehlstart zum Anfangsbestand
+    // der nächsten Auswertung machen.
+    return Response.json({ fehler: 'Zählung wurde verworfen' }, { status: 409 })
+  }
 
   const [offeneLager, fehlend] = await Promise.all([
     // Jedes aktive Lager ohne Fertigmeldung — auch die, für die es noch gar

@@ -88,6 +88,11 @@ enum EkPreisBezug {
 enum ZaehlungStatus {
   OFFEN
   ABGESCHLOSSEN
+  /// Verworfener Fehlstart. Bleibt in der Datenbank und verschwindet aus der
+  /// App — wie bei den Abweichungen wird nie gelöscht, nur der Status gesetzt.
+  /// Ein delete risse über die Kaskade alle Zählwerte mit, auch die eines
+  /// zweiten Geräts, das gerade noch zählt.
+  VERWORFEN
 
   @@map("zaehlung_status")
 }

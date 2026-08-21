@@ -40,33 +40,44 @@ export async function zaehlungBeginnen() {
 }
 
 /**
- * Verwirft eine offene Zählung samt allen Positionen — der Ausweg aus einem
- * Fehlstart, ohne den die versehentlich begonnene Zählung die echte des Tages
- * blockieren würde (zaehlungBeginnen setzt eine offene stets fort).
+ * Verwirft eine offene Zählung — der Ausweg aus einem Fehlstart, ohne den die
+ * versehentlich begonnene Zählung die echte des Tages blockieren würde
+ * (zaehlungBeginnen setzt eine offene stets fort).
+ *
+ * Verworfen heisst Status, nicht Löschen: ein delete risse über die Kaskade
+ * alle Zählwerte mit — auch die eines zweiten Geräts, das gerade noch zählt —
+ * und wäre durch nichts zurückzuholen. So verschwindet die Zählung aus der
+ * App, bleibt aber in der Datenbank; die Abweichungen machen es genauso.
  *
  * Nur offene: eine abgeschlossene Zählung ist Anfangsbestand einer Auswertung
- * und verschwindet nie wieder. Die Positionen fallen über die Kaskade im
- * Schema mit — hier wird nichts einzeln aufgeräumt.
+ * und verschwindet nie wieder.
  *
  * Die Rückfrage stellt die Oberfläche (verwerfen.tsx), nicht der Server: hier
- * kommt nur an, was schon bestätigt wurde.
+ * kommt nur an, was schon bestätigt wurde. Auch die Navigation gehört der
+ * Oberfläche — sie räumt nach dem Erfolg erst den lokalen Speicher, und ein
+ * redirect hier flöge als Fehler durch ihr try/catch.
  */
 export async function zaehlungVerwerfen(zaehlungId: string) {
   if (!istKennung(zaehlungId)) throw new Error('Keine gültige Zählungskennung')
 
   // Über Id und Betrieb gesucht: eine fremde Zählung ist damit nicht gefunden —
-  // und wird unten folgerichtig nicht gelöscht.
+  // und wird unten folgerichtig nicht angefasst.
   const betrieb = await aktuellerBetrieb()
   const zaehlung = await prisma.zaehlung.findFirst({
     where: { id: zaehlungId, betriebId: betrieb.id },
   })
-  // Schon weg (zweites Gerät, doppelter Klick): das Ziel ist erreicht.
-  if (zaehlung !== null) {
-    if (zaehlung.status !== ZaehlungStatus.OFFEN) {
-      throw new Error('Nur eine offene Zählung lässt sich verwerfen')
-    }
-    await prisma.zaehlung.delete({ where: { id: zaehlungId } })
+  // Nicht da oder schon verworfen (zweites Gerät, doppelter Klick): das Ziel
+  // ist erreicht.
+  if (zaehlung === null || zaehlung.status === ZaehlungStatus.VERWORFEN) return
+  if (zaehlung.status === ZaehlungStatus.ABGESCHLOSSEN) {
+    throw new Error('Nur eine offene Zählung lässt sich verwerfen')
   }
 
-  redirect('/')
+  // Der Status steht noch einmal in der Bedingung: schliesst ein zweites Gerät
+  // zwischen der Prüfung oben und diesem Schreiben ab, wird hier nichts mehr
+  // verworfen — eine abgeschlossene Zählung gewinnt.
+  await prisma.zaehlung.updateMany({
+    where: { id: zaehlungId, betriebId: betrieb.id, status: ZaehlungStatus.OFFEN },
+    data: { status: ZaehlungStatus.VERWORFEN },
+  })
 }

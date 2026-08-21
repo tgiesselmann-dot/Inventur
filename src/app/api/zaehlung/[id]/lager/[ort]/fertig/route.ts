@@ -49,6 +49,12 @@ export async function POST(
       { status: 409 },
     )
   }
+  if (zaehlung.status === ZaehlungStatus.VERWORFEN) {
+    return Response.json(
+      { fehler: 'Zählung wurde verworfen und nimmt keine Meldung mehr an' },
+      { status: 409 },
+    )
+  }
 
   const lagerort = await prisma.lagerort.findFirst({
     where: { id: ort, betriebId: benutzer.betrieb.id },

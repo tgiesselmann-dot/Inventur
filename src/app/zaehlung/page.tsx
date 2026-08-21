@@ -30,7 +30,9 @@ export const dynamic = 'force-dynamic'
 export default async function Page() {
   const betrieb = await aktuellerBetrieb()
   const zaehlungen = await prisma.zaehlung.findMany({
-    where: { betriebId: betrieb.id },
+    // Verworfene Fehlstarts sind aus der App verschwunden — sie in der Liste
+    // zu zeigen wäre Rauschen neben den Zählungen, die zählen.
+    where: { betriebId: betrieb.id, status: { in: [ZaehlungStatus.OFFEN, ZaehlungStatus.ABGESCHLOSSEN] } },
     orderBy: { datum: 'desc' },
     take: 20,
     include: { _count: { select: { positionen: true } } },

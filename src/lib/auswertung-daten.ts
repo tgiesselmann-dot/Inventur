@@ -557,7 +557,14 @@ export async function zaehlungsergebnis(
 ): Promise<Zaehlungsergebnis | null> {
   // Über beide Schlüssel gesucht: die Zählung eines fremden Betriebs ist damit
   // schlicht nicht gefunden, und die Seite zeigt ihr gewohntes „gibt es nicht".
-  const zaehlung = await prisma.zaehlung.findFirst({ where: { id: zaehlungId, betriebId } })
+  // Eine verworfene ebenso — ihr Ergebnis wäre das eines Fehlstarts.
+  const zaehlung = await prisma.zaehlung.findFirst({
+    where: {
+      id: zaehlungId,
+      betriebId,
+      status: { in: [ZaehlungStatus.OFFEN, ZaehlungStatus.ABGESCHLOSSEN] },
+    },
+  })
   if (zaehlung === null) return null
 
   const [vorgaenger, aktiv, gezaehlt, spanne] = await Promise.all([

@@ -42,8 +42,13 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]'>) {
   const betriebId = benutzer.betrieb.id
 
   // Über Id und Betrieb gesucht: eine fremde Zählung ist damit nicht gefunden.
+  // Eine verworfene auch nicht — sie ist aus der App verschwunden.
   const zaehlung = await prisma.zaehlung.findFirst({
-    where: { id, betriebId },
+    where: {
+      id,
+      betriebId,
+      status: { in: [ZaehlungStatus.OFFEN, ZaehlungStatus.ABGESCHLOSSEN] },
+    },
     include: {
       abschnitte: {
         include: {

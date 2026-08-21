@@ -109,6 +109,14 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/zaehlun
       { status: 409 },
     )
   }
+  // Eigener Text je Status: die Meldung landet als Ablehnungsgrund auf dem
+  // Gerät, und „abgeschlossen" hiesse hier fälschlich, die Werte seien drin.
+  if (zaehlung.status === ZaehlungStatus.VERWORFEN) {
+    return Response.json(
+      { fehler: 'Zählung wurde verworfen und nimmt keine Werte mehr an' },
+      { status: 409 },
+    )
+  }
 
   if (positionen.length === 0) {
     return Response.json({ gespeichert: [] })
