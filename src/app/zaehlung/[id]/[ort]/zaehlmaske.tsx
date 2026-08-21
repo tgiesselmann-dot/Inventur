@@ -46,7 +46,7 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
 
-import { ZaehlungStatus } from '@/generated/prisma/enums'
+import { ZaehlungStatus, type GebindeRegel } from '@/generated/prisma/enums'
 import {
   alsEingaben,
   alsPosition,
@@ -56,6 +56,7 @@ import {
   inZaehlreihenfolge,
   kontrolltext,
   naechsterIndex,
+  regelFuer,
   schritt,
   tasteAnwenden,
   ungezaehlte,
@@ -105,6 +106,10 @@ type Props = {
   zaehlungId: string
   lagerortId: string
   lagerortName: string
+  /** Welche Zählfelder dieser Ort zulässt — die Regel aus der Lagerverwaltung. */
+  gebindeRegel: GebindeRegel
+  /** Die Artikel, die von der Regel ausgenommen sind und normal zählen. */
+  ausnahmeArtikel: string[]
   datum: string
   status: ZaehlungStatus
   artikel: ZaehlArtikel[]
@@ -122,6 +127,8 @@ export function Zaehlmaske({
   zaehlungId,
   lagerortId,
   lagerortName,
+  gebindeRegel,
+  ausnahmeArtikel,
   datum,
   status,
   artikel,
@@ -129,6 +136,18 @@ export function Zaehlmaske({
   serverEintraege,
 }: Props) {
   const router = useRouter()
+
+  const ausnahmen = useMemo(() => new Set(ausnahmeArtikel), [ausnahmeArtikel])
+
+  /**
+   * Die Regel, die für einen Artikel an diesem Ort gilt. Sie entscheidet über
+   * die Felder — hier, in der Liste und beim Speichern, damit alle drei
+   * dieselben Felder meinen.
+   */
+  const regelVon = useCallback(
+    (artikelId: string) => regelFuer(gebindeRegel, ausnahmen, artikelId),
+    [gebindeRegel, ausnahmen],
+  )
 
   /**
    * Was heute ausnahmsweise hier steht — in der Liste dazugeholt.
@@ -186,7 +205,10 @@ export function Zaehlmaske({
   const [zugeklappt, setZugeklappt] = useState<ReadonlySet<string>>(new Set())
 
   const aktuell = liste[index]
-  const meineFelder = useMemo(() => (aktuell ? felder(aktuell) : []), [aktuell])
+  const meineFelder = useMemo(
+    () => (aktuell ? felder(aktuell, regelVon(aktuell.id)) : []),
+    [aktuell, regelVon],
+  )
   const feld = meineFelder.find((eintrag) => eintrag.name === aktivesFeld) ?? meineFelder[0]
   /** Das Feld, in das die Wechseltaste springt. Fehlt beim Artikel mit einem Feld. */
   const anderesFeld = meineFelder.find((eintrag) => eintrag.name !== feld?.name)
@@ -205,9 +227,9 @@ export function Zaehlmaske({
     (neu: Zaehleingabe) => {
       if (aktuell === undefined) return
       setEntwurf(neu)
-      stand.setzen(aktuell.id, alsPosition(aktuell, neu))
+      stand.setzen(aktuell.id, alsPosition(aktuell, neu, regelVon(aktuell.id)))
     },
-    [aktuell, stand],
+    [aktuell, stand, regelVon],
   )
 
   /**
@@ -220,9 +242,9 @@ export function Zaehlmaske({
    */
   const wertSetzen = useCallback(
     (eintrag: ZaehlArtikel, neu: Zaehleingabe) => {
-      stand.setzen(eintrag.id, alsPosition(eintrag, neu))
+      stand.setzen(eintrag.id, alsPosition(eintrag, neu, regelVon(eintrag.id)))
     },
-    [stand],
+    [stand, regelVon],
   )
 
   const gehZu = useCallback((ziel: number) => {
@@ -406,6 +428,7 @@ export function Zaehlmaske({
           artikel={liste}
           weitere={weitere}
           lagerortName={lagerortName}
+          regelVon={regelVon}
           eintraege={stand.eintraege}
           erfasst={stand.erfasst}
           offen={offen}
@@ -458,7 +481,9 @@ export function Zaehlmaske({
                 ))}
               </div>
 
-              {meineFelder.length === 2 && <Kontrollzeile artikel={aktuell} werte={werte} />}
+              {meineFelder.length === 2 && (
+                <Kontrollzeile artikel={aktuell} werte={werte} regel={regelVon(aktuell.id)} />
+              )}
             </div>
           </main>
 
@@ -500,10 +525,18 @@ export function Zaehlmaske({
  * bedeutet. Text samt Einheitenwort kommt aus `kontrolltext` — dort steht auch,
  * warum ein Fass keine "Flaschen" bekommt.
  */
-function Kontrollzeile({ artikel, werte }: { artikel: ZaehlArtikel; werte: Zaehleingabe }) {
+function Kontrollzeile({
+  artikel,
+  werte,
+  regel,
+}: {
+  artikel: ZaehlArtikel
+  werte: Zaehleingabe
+  regel: GebindeRegel
+}) {
   let text: string | null
   try {
-    text = kontrolltext(artikel, werte)
+    text = kontrolltext(artikel, werte, regel)
   } catch {
     // Sollte nicht vorkommen — alsPosition räumt die Werte vorher auf. Eine
     // kaputte Kontrollanzeige darf die Eingabe trotzdem nicht blockieren.

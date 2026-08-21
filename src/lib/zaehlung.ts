@@ -15,7 +15,7 @@
  * "noch nicht angefasst" gegenüber "nachgesehen, Fach ist leer".
  */
 
-import { Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
+import { GebindeRegel, Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
 import { passtAufText, passtZurSuche } from '@/lib/artikelsuche'
 import { gesamtEinheiten, type ZaehlbarerArtikel } from '@/lib/einheiten'
 
@@ -136,23 +136,53 @@ export function gebindeMenge(anzahl: string, gebindeart: Gebindeart): string {
 }
 
 /**
- * Die Eingabefelder eines Artikels — eines oder zwei, je nach Zählmodus.
+ * Die Regel, die für einen Artikel an seinem Ort gilt.
  *
- * Das Komma folgt dem Zählmodus, nicht dem Geschmack: ein halber Kasten ist im
- * Lager keine sinnvolle Angabe (die losen Flaschen gehören ins zweite Feld),
- * ein halbes Fass und eine halb volle Flasche dagegen schon.
+ * Ein ausgenommener Artikel zählt wieder mit beiden Feldern — die
+ * Maisels-Kästen an der Theke. Die Ausnahme kennt bewusst keine eigene Regel:
+ * sie hebt die des Ortes auf, mehr nicht.
  */
-export function felder(artikel: Pick<ZaehlArtikel, 'zaehlmodus' | 'gebindeart'>): Feld[] {
+export function regelFuer(
+  regel: GebindeRegel,
+  ausnahmen: ReadonlySet<string>,
+  artikelId: string,
+): GebindeRegel {
+  return ausnahmen.has(artikelId) ? GebindeRegel.GEBINDE_UND_EINZELN : regel
+}
+
+/**
+ * Die Eingabefelder eines Artikels — eines oder zwei, je nach Zählmodus und
+ * der Gebinderegel des Ortes.
+ *
+ * Die Regel greift nur bei GEBINDE_PLUS_EINZELN: an der Theke (NUR_EINZELN)
+ * bleibt vom Kasten-Artikel das Flaschenfeld, im Kühlcontainer (NUR_GEBINDE)
+ * das Kastenfeld. EINZELN und FASS gehen unverändert durch — ein Fass im
+ * Kühlcontainer wird weiter als Fass gezählt.
+ *
+ * Das Komma folgt dem Feld, nicht dem Geschmack: ein halber Kasten ist im
+ * Lager keine sinnvolle Angabe — auch unter NUR_GEBINDE: ein angebrochener
+ * Kasten wird dort als ganzer gezählt oder gar nicht. Ein halbes Fass und eine
+ * halb volle Flasche dagegen schon.
+ */
+export function felder(
+  artikel: Pick<ZaehlArtikel, 'zaehlmodus' | 'gebindeart'>,
+  regel: GebindeRegel = GebindeRegel.GEBINDE_UND_EINZELN,
+): Feld[] {
   switch (artikel.zaehlmodus) {
-    case Zaehlmodus.GEBINDE_PLUS_EINZELN:
-      return [
-        {
-          name: 'anzahlGebinde',
-          beschriftung: GEBINDE_BESCHRIFTUNG[artikel.gebindeart],
-          dezimal: false,
-        },
-        { name: 'anzahlEinzeln', beschriftung: 'lose Flaschen', dezimal: true },
-      ]
+    case Zaehlmodus.GEBINDE_PLUS_EINZELN: {
+      const gebinde: Feld = {
+        name: 'anzahlGebinde',
+        beschriftung: GEBINDE_BESCHRIFTUNG[artikel.gebindeart],
+        dezimal: false,
+      }
+      if (regel === GebindeRegel.NUR_GEBINDE) return [gebinde]
+      // Ohne Gebindefeld sind alle Flaschen lose — die Beschriftung sagt
+      // schlicht "Flaschen", wie beim Artikel, der nur einzeln gezählt wird.
+      if (regel === GebindeRegel.NUR_EINZELN) {
+        return [{ name: 'anzahlEinzeln', beschriftung: 'Flaschen', dezimal: true }]
+      }
+      return [gebinde, { name: 'anzahlEinzeln', beschriftung: 'lose Flaschen', dezimal: true }]
+    }
 
     case Zaehlmodus.EINZELN:
       return [{ name: 'anzahlEinzeln', beschriftung: 'Flaschen', dezimal: true }]
@@ -300,16 +330,19 @@ export function alsEingaben(
 /**
  * Die Eingabe eines Artikels in die beiden Spalten von Zaehlposition.
  *
- * Das im Zählmodus nicht vorgesehene Feld wird hart auf "0" gesetzt, statt den
- * dort vielleicht stehenden Text mitzuschicken: `gesamtEinheiten` weist eine
- * Zählung ab, die nicht zum Modus passt, und diese Zurückweisung soll nicht
- * erst beim Abschluss der Zählung auffallen.
+ * Das im Zählmodus oder von der Gebinderegel des Ortes nicht vorgesehene Feld
+ * wird hart auf "0" gesetzt, statt den dort vielleicht stehenden Text
+ * mitzuschicken: `gesamtEinheiten` weist eine Zählung ab, die nicht zum Modus
+ * passt, und diese Zurückweisung soll nicht erst beim Abschluss der Zählung
+ * auffallen. Die 0 im unterdrückten Feld ist zugleich die richtige Aussage —
+ * an der Theke stehen keine Kästen, die Kästen zählt der Container.
  */
 export function alsPosition(
   artikel: Pick<ZaehlArtikel, 'zaehlmodus' | 'gebindeart'>,
   eingabe: Zaehleingabe,
+  regel: GebindeRegel = GebindeRegel.GEBINDE_UND_EINZELN,
 ): { anzahlGebinde: string; anzahlEinzeln: string } {
-  const erlaubt = new Set(felder(artikel).map((feld) => feld.name))
+  const erlaubt = new Set(felder(artikel, regel).map((feld) => feld.name))
   return {
     anzahlGebinde: erlaubt.has('anzahlGebinde') ? dezimaltext(eingabe.anzahlGebinde) : '0',
     anzahlEinzeln: erlaubt.has('anzahlEinzeln') ? dezimaltext(eingabe.anzahlEinzeln) : '0',
@@ -325,10 +358,14 @@ export function alsPosition(
  * Einheitenwort kommt aus der Gebindetabelle oben — beim FASS ist die Einheit
  * das Fass selbst, "3 Flaschen" für drei Fässer wäre eine falsche Auskunft.
  */
-export function kontrolltext(artikel: ZaehlArtikel, eingabe: Zaehleingabe): string | null {
+export function kontrolltext(
+  artikel: ZaehlArtikel,
+  eingabe: Zaehleingabe,
+  regel: GebindeRegel = GebindeRegel.GEBINDE_UND_EINZELN,
+): string | null {
   if (eingabe.anzahlGebinde === '' && eingabe.anzahlEinzeln === '') return null
 
-  const position = alsPosition(artikel, eingabe)
+  const position = alsPosition(artikel, eingabe, regel)
   const einheiten = gesamtEinheiten(artikel, position.anzahlGebinde, position.anzahlEinzeln)
   const fass = artikel.zaehlmodus === Zaehlmodus.FASS
   const wort = fass

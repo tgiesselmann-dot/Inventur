@@ -60,6 +60,14 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]/[ort]'>
     orderBy: { sortierung: 'asc' },
   })
 
+  // Die Artikel, die von der Gebinderegel dieses Ortes ausgenommen sind. Bei
+  // der Standardregel ist die Menge belanglos, mitgegeben wird sie trotzdem —
+  // eine Maske, die je nach Regel andere Props bekommt, wäre zwei Masken.
+  const ausnahmen = await prisma.gebindeausnahme.findMany({
+    where: { lagerortId: lagerort.id, betriebId: betrieb.id },
+    select: { artikelId: true },
+  })
+
   // Was an diesem Ort erwartet wird: die Artikel, die dort in der letzten
   // abgeschlossenen Zählung einen Wert hatten. Beim ersten Mal ist die Menge
   // leer, und die Maske führt schlicht durch den ganzen Stamm.
@@ -98,6 +106,8 @@ export default async function Page({ params }: PageProps<'/zaehlung/[id]/[ort]'>
       zaehlungId={zaehlung.id}
       lagerortId={lagerort.id}
       lagerortName={lagerort.name}
+      gebindeRegel={lagerort.gebindeRegel}
+      ausnahmeArtikel={ausnahmen.map((zeile) => zeile.artikelId)}
       datum={zaehlung.datum.toISOString().slice(0, 10)}
       status={zaehlung.status}
       artikel={artikel}

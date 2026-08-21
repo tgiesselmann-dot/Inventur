@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
+import { GebindeRegel, Gebindeart, Zaehlmodus } from '@/generated/prisma/enums'
 import {
   abschnitte,
   alsEingaben,
@@ -8,6 +8,7 @@ import {
   dezimaltext,
   eingabetext,
   felder,
+  regelFuer,
   fortschritt,
   fortschrittsanteil,
   kontrolltext,
@@ -91,6 +92,42 @@ describe('felder', () => {
   it('beschriftet das Gebindefeld nach der Lieferform, nicht nach dem Zählmodus', () => {
     const wein = artikel({ id: 'wein', gebindeart: Gebindeart.KARTON })
     expect(felder(wein)[0].beschriftung).toBe('Kartons')
+  })
+
+  it('lässt unter NUR_EINZELN vom Kasten nur das Flaschenfeld übrig', () => {
+    // Die Theke: dort stehen keine Kästen. Die Beschriftung sagt schlicht
+    // "Flaschen" — ohne Gebindefeld gibt es kein "lose" mehr.
+    expect(felder(colaKasten, GebindeRegel.NUR_EINZELN)).toEqual([
+      { name: 'anzahlEinzeln', beschriftung: 'Flaschen', dezimal: true },
+    ])
+  })
+
+  it('lässt unter NUR_GEBINDE nur das Kastenfeld übrig, ohne Komma', () => {
+    // Der Kühlcontainer: ein angebrochener Kasten wird als ganzer gezählt
+    // oder gar nicht — deshalb bleibt das Feld ganzzahlig.
+    expect(felder(colaKasten, GebindeRegel.NUR_GEBINDE)).toEqual([
+      { name: 'anzahlGebinde', beschriftung: 'Kästen', dezimal: false },
+    ])
+  })
+
+  it('lässt EINZELN und FASS von der Regel unberührt', () => {
+    // Ein Fass im Kühlcontainer wird weiter als Fass gezählt, die Spirituose
+    // an der Theke weiter als Flasche — sonst wären sie dort nicht erfassbar.
+    expect(felder(ginFlasche, GebindeRegel.NUR_GEBINDE)).toEqual(felder(ginFlasche))
+    expect(felder(fassPils, GebindeRegel.NUR_EINZELN)).toEqual(felder(fassPils))
+  })
+})
+
+describe('regelFuer', () => {
+  it('gibt die Regel des Ortes, wenn der Artikel nicht ausgenommen ist', () => {
+    expect(regelFuer(GebindeRegel.NUR_EINZELN, new Set(), 'cola')).toBe(GebindeRegel.NUR_EINZELN)
+  })
+
+  it('hebt die Regel für einen ausgenommenen Artikel auf', () => {
+    // Die Maisels-Kästen an der Theke: ausgenommen heisst beide Felder.
+    expect(regelFuer(GebindeRegel.NUR_EINZELN, new Set(['maisels']), 'maisels')).toBe(
+      GebindeRegel.GEBINDE_UND_EINZELN,
+    )
   })
 })
 
@@ -241,6 +278,18 @@ describe('alsPosition', () => {
       anzahlGebinde: '1.5',
       anzahlEinzeln: '0',
     })
+  })
+
+  it('nullt unter NUR_EINZELN das Kastenfeld — die Kästen zählt der Container', () => {
+    expect(
+      alsPosition(colaKasten, { anzahlGebinde: '2', anzahlEinzeln: '5' }, GebindeRegel.NUR_EINZELN),
+    ).toEqual({ anzahlGebinde: '0', anzahlEinzeln: '5' })
+  })
+
+  it('nullt unter NUR_GEBINDE das Einzelfeld', () => {
+    expect(
+      alsPosition(colaKasten, { anzahlGebinde: '2', anzahlEinzeln: '5' }, GebindeRegel.NUR_GEBINDE),
+    ).toEqual({ anzahlGebinde: '2', anzahlEinzeln: '0' })
   })
 })
 

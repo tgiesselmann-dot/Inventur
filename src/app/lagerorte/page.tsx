@@ -15,10 +15,12 @@
  * wird stillgelegt — an einem Ort mit Zählwerten hängen Bestände von Wochen.
  */
 
+import { GebindeRegel, Zaehlmodus } from '@/generated/prisma/enums'
 import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import {
   NAME_MAXLAENGE,
   darfGeloeschtWerden,
+  gebindeRegelText,
   namensfehlerText,
   zustandstext,
   type Namensfehler,
@@ -31,7 +33,14 @@ import { Schaltflaeche } from '@/ui/schaltflaeche'
 import { Leerzustand } from '@/ui/zustand'
 
 import { Geruest } from '../geruest'
-import { lagerortAnlegen, lagerortUmbenennen, lagerortUmschalten } from './aktionen'
+import {
+  ausnahmeEntfernen,
+  ausnahmeHinzufuegen,
+  gebindeRegelSetzen,
+  lagerortAnlegen,
+  lagerortUmbenennen,
+  lagerortUmschalten,
+} from './aktionen'
 import { LagerortLoeschen } from './loeschen'
 
 // Ein Datenbankzugriff macht eine Seite nicht von allein dynamisch: ohne diese
@@ -60,7 +69,20 @@ export default async function Page({ searchParams }: PageProps<'/lagerorte'>) {
     where: { betriebId: betrieb.id },
     // Anlagereihenfolge über die zeitgeordnete UUIDv7 — siehe Kopf der Datei.
     orderBy: { id: 'asc' },
-    include: { _count: { select: { zaehlpositionen: true } } },
+    include: {
+      _count: { select: { zaehlpositionen: true } },
+      gebindeausnahmen: {
+        include: { artikel: { select: { name: true, lieferGebindeText: true, sortierung: true } } },
+      },
+    },
+  })
+
+  // Was sich überhaupt ausnehmen lässt: nur Artikel, die Gebinde plus einzeln
+  // zählen — alle anderen fasst die Regel gar nicht an.
+  const kastenArtikel = await prisma.artikel.findMany({
+    where: { betriebId: betrieb.id, aktiv: true, zaehlmodus: Zaehlmodus.GEBINDE_PLUS_EINZELN },
+    select: { id: true, name: true, lieferGebindeText: true },
+    orderBy: { sortierung: 'asc' },
   })
 
   const meldung = typeof parameter.fehler === 'string' ? fehlertext(parameter.fehler) : null
@@ -124,6 +146,93 @@ export default async function Page({ searchParams }: PageProps<'/lagerorte'>) {
                     </Schaltflaeche>
                   </div>
                 </form>
+
+                {/* Welche Zählfelder dieser Ort zulässt. Ein eigenes Formular
+                    wie beim Namen: eine Regel, die beim Stilllegen mitreist,
+                    wäre eine stille Zweitwirkung. */}
+                <form action={gebindeRegelSetzen} className="flex items-end gap-tapgap">
+                  <input type="hidden" name="id" value={ort.id} />
+                  <label className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className={BESCHRIFTUNG}>Gezählt wird</span>
+                    <select name="regel" defaultValue={ort.gebindeRegel} className={FELD}>
+                      {Object.values(GebindeRegel).map((regel) => (
+                        <option key={regel} value={regel}>
+                          {gebindeRegelText(regel)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="shrink-0">
+                    <Schaltflaeche art="sekundaer" type="submit">
+                      Speichern
+                    </Schaltflaeche>
+                  </div>
+                </form>
+
+                {/* Die Ausnahmen der Regel — nur sichtbar, wenn es eine Regel
+                    gibt, von der etwas auszunehmen wäre, oder noch Ausnahmen
+                    aus einer früheren Regel dastehen. */}
+                {(ort.gebindeRegel !== GebindeRegel.GEBINDE_UND_EINZELN ||
+                  ort.gebindeausnahmen.length > 0) && (
+                  <div className="flex flex-col gap-tapgap rounded-ctl bg-bg p-3">
+                    <p className="text-sm text-text-muted">
+                      Ausnahmen zählen weiter mit Kästen und losen Flaschen. Fässer und einzeln
+                      gezählte Flaschen betrifft die Regel ohnehin nicht.
+                    </p>
+
+                    {[...ort.gebindeausnahmen]
+                      .sort((a, b) => a.artikel.sortierung - b.artikel.sortierung)
+                      .map((ausnahme) => (
+                        <form
+                          key={ausnahme.id}
+                          action={ausnahmeEntfernen}
+                          className="flex items-center gap-tapgap"
+                        >
+                          <input type="hidden" name="ausnahmeId" value={ausnahme.id} />
+                          <p className="min-w-0 flex-1 text-zeile">
+                            {ausnahme.artikel.name}{' '}
+                            <span className="text-text-muted">
+                              · {ausnahme.artikel.lieferGebindeText}
+                            </span>
+                          </p>
+                          <div className="shrink-0">
+                            <Schaltflaeche art="sekundaer" type="submit">
+                              Entfernen
+                            </Schaltflaeche>
+                          </div>
+                        </form>
+                      ))}
+
+                    <form action={ausnahmeHinzufuegen} className="flex items-end gap-tapgap">
+                      <input type="hidden" name="id" value={ort.id} />
+                      <label className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className={BESCHRIFTUNG}>Ausnahme hinzufügen</span>
+                        <select name="artikelId" defaultValue="" required className={FELD}>
+                          <option value="" disabled>
+                            Artikel wählen …
+                          </option>
+                          {kastenArtikel
+                            .filter(
+                              (artikel) =>
+                                !ort.gebindeausnahmen.some(
+                                  (ausnahme) => ausnahme.artikelId === artikel.id,
+                                ),
+                            )
+                            .map((artikel) => (
+                              <option key={artikel.id} value={artikel.id}>
+                                {artikel.name} · {artikel.lieferGebindeText}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <div className="shrink-0">
+                        <Schaltflaeche art="sekundaer" type="submit">
+                          Aufnehmen
+                        </Schaltflaeche>
+                      </div>
+                    </form>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                   <p className="text-sm text-text-muted">

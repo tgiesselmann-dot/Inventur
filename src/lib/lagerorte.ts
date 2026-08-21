@@ -13,6 +13,8 @@
  * Namen und Zulässigkeit entschieden.
  */
 
+import { GebindeRegel } from '@/generated/prisma/enums'
+
 /** Ein Ort, so wie die Verwaltung ihn braucht. */
 export type Lagerortzeile = {
   id: string
@@ -30,6 +32,33 @@ export type Lagerortzeile = {
 export const NAME_MAXLAENGE = 40
 
 export type Namensfehler = 'leer' | 'zu-lang' | 'doppelt'
+
+/**
+ * Wie die Gebinderegel eines Ortes in der Verwaltung heisst.
+ *
+ * "Kästen" steht für das Liefergebinde insgesamt — auch der Wein im Karton
+ * fällt unter die Regel. Das Wort folgt dem Lager, nicht dem Datenmodell: wer
+ * hier liest, denkt an Kästen.
+ */
+export function gebindeRegelText(regel: GebindeRegel): string {
+  switch (regel) {
+    case GebindeRegel.GEBINDE_UND_EINZELN:
+      return 'Kästen und lose Flaschen'
+    case GebindeRegel.NUR_EINZELN:
+      return 'Nur Flaschen'
+    case GebindeRegel.NUR_GEBINDE:
+      return 'Nur ganze Kästen'
+    default: {
+      const unbekannt: never = regel
+      throw new Error(`Unbekannte Gebinderegel: ${String(unbekannt)}`)
+    }
+  }
+}
+
+/** Ob ein Formularwert eine Gebinderegel ist — die Prüfung der Serveraktion. */
+export function istGebindeRegel(wert: string): wert is GebindeRegel {
+  return (Object.values(GebindeRegel) as string[]).includes(wert)
+}
 
 /**
  * Prüft einen eingetippten Namen gegen die schon vorhandenen.

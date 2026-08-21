@@ -58,6 +58,23 @@ enum Zaehlmodus {
   @@map("zaehlmodus")
 }
 
+/// Welche Zählfelder ein Lagerort zulässt — die Regel des Ortes, nicht des
+/// Artikels. Sie greift nur bei Artikeln mit Zählmodus GEBINDE_PLUS_EINZELN:
+/// an der Theke stehen keine Kästen, im Kühlcontainer keine losen Flaschen.
+/// EINZELN und FASS bleiben unberührt — ein Fass im Kühlcontainer wird weiter
+/// als Fass gezählt, sonst wäre es dort gar nicht erfassbar.
+enum GebindeRegel {
+  /// Beide Felder, das heutige Verhalten.
+  GEBINDE_UND_EINZELN
+  /// Nur lose Einheiten — Theke, Kiosk.
+  NUR_EINZELN
+  /// Nur volle Gebinde, ganzzahlig: ein angebrochener Kasten wird als ganzer
+  /// gezählt oder gar nicht.
+  NUR_GEBINDE
+
+  @@map("gebinde_regel")
+}
+
 /// Worauf sich Artikel.ekPreisCent bezieht.
 enum EkPreisBezug {
   /// Preis für ein ganzes Gebinde, z. B. 14,90 EUR je Kasten.
@@ -152,6 +169,7 @@ model Betrieb {
   abweichungsereignisse Abweichungsereignis[]
   umsatzimporte         Umsatzimport[]
   umsatzpositionen      Umsatzposition[]
+  gebindeausnahmen      Gebindeausnahme[]
 
   @@map("betrieb")
 }
@@ -230,6 +248,7 @@ model Artikel {
   zaehlpositionen           Zaehlposition[]
   bestellpositionen         Bestellposition[]
   lieferpositionen          Lieferposition[]
+  gebindeausnahmen          Gebindeausnahme[]
 
   // Derselbe Artikel darf in mehreren Gebindegrössen geführt werden — Cola als
   // Kasten 24 x 0,33 und als Einzelflasche 1,0 l sind zwei Zeilen.
@@ -258,18 +277,48 @@ model Artikel {
 /// Wird wie ein Artikel nie gelöscht, sondern über `aktiv = false` stillgelegt.
 /// Ein aufgegebenes Lager muss in alten Zählungen lesbar bleiben.
 model Lagerort {
-  id        String  @id @default(uuid(7)) @db.Uuid
-  betriebId String  @map("betrieb_id") @db.Uuid
-  name      String
-  aktiv     Boolean @default(true)
+  id           String       @id @default(uuid(7)) @db.Uuid
+  betriebId    String       @map("betrieb_id") @db.Uuid
+  name         String
+  /// Welche Zählfelder dieser Ort zulässt. Ausnahmen je Artikel stehen in
+  /// `gebindeausnahmen` und zählen wieder mit beiden Feldern.
+  gebindeRegel GebindeRegel @default(GEBINDE_UND_EINZELN) @map("gebinde_regel")
+  aktiv        Boolean      @default(true)
 
-  betrieb         Betrieb          @relation(fields: [betriebId], references: [id], onDelete: Restrict)
-  zaehlpositionen Zaehlposition[]
-  abschnitte      Zaehlabschnitt[]
+  betrieb          Betrieb           @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  zaehlpositionen  Zaehlposition[]
+  abschnitte       Zaehlabschnitt[]
+  gebindeausnahmen Gebindeausnahme[]
 
   // Indiziert betriebId zugleich als führende Spalte.
   @@unique([betriebId, name])
   @@map("lagerort")
+}
+
+/// Ein Artikel, der von der Gebinderegel seines Lagerorts ausgenommen ist und
+/// dort wieder normal — mit beiden Feldern — gezählt wird. Die Maisels-Kästen
+/// an der Theke, die 1-l-Kästen von Cola, Fanta und Sprite im blauen Container.
+///
+/// Die blosse Existenz der Zeile ist die Aussage; sie trägt bewusst keine
+/// eigene Regel. Eine Ausnahme mit eigener Regel wäre eine zweite Regelstelle,
+/// und die Frage „was gilt hier?" hätte zwei Antworten.
+model Gebindeausnahme {
+  id         String @id @default(uuid(7)) @db.Uuid
+  betriebId  String @map("betrieb_id") @db.Uuid
+  lagerortId String @map("lagerort_id") @db.Uuid
+  artikelId  String @map("artikel_id") @db.Uuid
+
+  betrieb  Betrieb  @relation(fields: [betriebId], references: [id], onDelete: Restrict)
+  // Mit dem Ort darf die Ausnahme fallen — sie ist Einstellung, kein Zählwert.
+  lagerort Lagerort @relation(fields: [lagerortId], references: [id], onDelete: Cascade)
+  artikel  Artikel  @relation(fields: [artikelId], references: [id], onDelete: Restrict)
+
+  // Ein Artikel ist je Ort höchstens einmal ausgenommen. Indiziert zugleich
+  // lagerortId als führende Spalte — die Abfrage der Zählmaske.
+  @@unique([lagerortId, artikelId])
+  @@index([betriebId])
+  @@index([artikelId])
+  @@map("gebindeausnahme")
 }
 
 /// Eine Bezeichnung, wie sie im Kassensystem gebucht wird — die Hülle, an der

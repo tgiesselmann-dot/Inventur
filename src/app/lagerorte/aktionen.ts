@@ -19,11 +19,13 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+import { Zaehlmodus } from '@/generated/prisma/enums'
 import { pflichtBetriebsleiter } from '@/lib/anmeldung'
 import { istKennung } from '@/lib/kennung'
 import {
   darfGeloeschtWerden,
   darfStillgelegtWerden,
+  istGebindeRegel,
   nameGeprueft,
   type Lagerortzeile,
 } from '@/lib/lagerorte'
@@ -108,6 +110,82 @@ export async function lagerortUmschalten(formular: FormData) {
   await prisma.lagerort.updateMany({
     where: { id, betriebId: betrieb.id },
     data: { aktiv: !ort.aktiv },
+  })
+
+  revalidatePath(SEITE)
+  redirect(SEITE)
+}
+
+/**
+ * Setzt die Gebinderegel eines Ortes — welche Zählfelder er zulässt.
+ *
+ * Die Regel wirkt ab der nächsten Eingabe, nicht rückwirkend: schon gezählte
+ * Werte bleiben stehen, wie sie erfasst wurden. Was sie für einen Artikel
+ * bedeutet, entscheidet `felder()` in src/lib/zaehlung.ts — hier wird nur
+ * gespeichert.
+ */
+export async function gebindeRegelSetzen(formular: FormData) {
+  const id = String(formular.get('id') ?? '')
+  if (!istKennung(id)) redirect(SEITE)
+
+  const regel = String(formular.get('regel') ?? '')
+  if (!istGebindeRegel(regel)) redirect(SEITE)
+
+  const { betrieb } = await pflichtBetriebsleiter()
+  await prisma.lagerort.updateMany({
+    where: { id, betriebId: betrieb.id },
+    data: { gebindeRegel: regel },
+  })
+
+  revalidatePath(SEITE)
+  redirect(SEITE)
+}
+
+/**
+ * Nimmt einen Artikel von der Gebinderegel seines Ortes aus — er zählt dort
+ * wieder mit beiden Feldern. Die Maisels-Kästen an der Theke.
+ *
+ * Nur Artikel mit Zählmodus GEBINDE_PLUS_EINZELN: bei allen anderen gäbe es
+ * nichts auszunehmen, die Regel fasst sie gar nicht an.
+ */
+export async function ausnahmeHinzufuegen(formular: FormData) {
+  const id = String(formular.get('id') ?? '')
+  const artikelId = String(formular.get('artikelId') ?? '')
+  if (!istKennung(id) || !istKennung(artikelId)) redirect(SEITE)
+
+  const { betrieb } = await pflichtBetriebsleiter()
+
+  // Beide über den Betrieb gesucht: Fremdes ist schlicht nicht gefunden.
+  const ort = await prisma.lagerort.findFirst({ where: { id, betriebId: betrieb.id } })
+  const artikel = await prisma.artikel.findFirst({
+    where: {
+      id: artikelId,
+      betriebId: betrieb.id,
+      aktiv: true,
+      zaehlmodus: Zaehlmodus.GEBINDE_PLUS_EINZELN,
+    },
+  })
+  if (ort === null || artikel === null) redirect(SEITE)
+
+  // skipDuplicates statt Fehler: eine schon bestehende Ausnahme noch einmal
+  // anzulegen ist kein Fehlerfall, sondern ein doppelter Tipp.
+  await prisma.gebindeausnahme.createMany({
+    data: [{ betriebId: betrieb.id, lagerortId: ort.id, artikelId: artikel.id }],
+    skipDuplicates: true,
+  })
+
+  revalidatePath(SEITE)
+  redirect(SEITE)
+}
+
+/** Entfernt eine Ausnahme — der Artikel folgt wieder der Regel seines Ortes. */
+export async function ausnahmeEntfernen(formular: FormData) {
+  const ausnahmeId = String(formular.get('ausnahmeId') ?? '')
+  if (!istKennung(ausnahmeId)) redirect(SEITE)
+
+  const { betrieb } = await pflichtBetriebsleiter()
+  await prisma.gebindeausnahme.deleteMany({
+    where: { id: ausnahmeId, betriebId: betrieb.id },
   })
 
   revalidatePath(SEITE)

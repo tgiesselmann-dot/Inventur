@@ -62,6 +62,7 @@
 
 import { useState } from 'react'
 
+import { type GebindeRegel } from '@/generated/prisma/enums'
 import {
   alsEingabe,
   alsEingaben,
@@ -86,6 +87,11 @@ type Props = {
   /** Der übrige Stamm — was an diesem Ort nicht erwartet wird. */
   weitere: ZaehlArtikel[]
   lagerortName: string
+  /**
+   * Die Gebinderegel, die für einen Artikel an diesem Ort gilt — aus der
+   * Maske, damit Liste, Fokusansicht und Speichern dieselben Felder meinen.
+   */
+  regelVon: (artikelId: string) => GebindeRegel
   eintraege: ReadonlyMap<string, Eintrag>
   erfasst: ReadonlySet<string>
   offen: ZaehlArtikel[]
@@ -128,6 +134,7 @@ export function Uebersicht({
   artikel,
   weitere,
   lagerortName,
+  regelVon,
   eintraege,
   erfasst,
   offen,
@@ -286,6 +293,7 @@ export function Uebersicht({
                     <Zeile
                       key={zeile.artikel.id}
                       artikel={zeile.artikel}
+                      regel={regelVon(zeile.artikel.id)}
                       eintrag={eintraege.get(zeile.artikel.id)}
                       gezaehlt={erfasst.has(zeile.artikel.id)}
                       vermisst={false}
@@ -427,6 +435,7 @@ export function Uebersicht({
 
 function Zeile({
   artikel,
+  regel,
   eintrag,
   gezaehlt,
   vermisst,
@@ -435,6 +444,8 @@ function Zeile({
   aufKlick,
 }: {
   artikel: ZaehlArtikel
+  /** Die Gebinderegel dieses Artikels an diesem Ort — entscheidet die Felder. */
+  regel: GebindeRegel
   eintrag: Eintrag | undefined
   gezaehlt: boolean
   vermisst: boolean
@@ -507,7 +518,7 @@ function Zeile({
                 : 'text-text-muted'
           }`}
         >
-          {gezaehlt ? wertText(artikel, eintrag) : '—'}
+          {gezaehlt ? wertText(artikel, regel, eintrag) : '—'}
         </span>
         {punkt}
       </li>
@@ -537,7 +548,7 @@ function Zeile({
           auf zwei Zeilen, "KÄSTEN" nicht — mittig zentriert stünden die beiden
           Zahlen derselben Zeile um eine halbe Zeilenhöhe versetzt. */}
       <span className="flex shrink-0 items-end gap-tapgap">
-        {felder(artikel).map((feld) => (
+        {felder(artikel, regel).map((feld) => (
           <label key={feld.name} className="flex w-20 flex-col items-center gap-0.5">
             <span
               aria-hidden
@@ -566,10 +577,10 @@ function Zeile({
   )
 }
 
-/** Der gezählte Wert in der Schreibweise seines Zählmodus. */
-function wertText(artikel: ZaehlArtikel, eintrag: Eintrag | undefined): string {
+/** Der gezählte Wert in der Schreibweise seines Zählmodus und der Ortsregel. */
+function wertText(artikel: ZaehlArtikel, regel: GebindeRegel, eintrag: Eintrag | undefined): string {
   if (eintrag === undefined) return '—'
-  return felder(artikel)
+  return felder(artikel, regel)
     .map((feld) => alsEingabe(eintrag[feld.name]))
     .join(' + ')
 }
