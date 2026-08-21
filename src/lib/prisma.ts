@@ -23,9 +23,11 @@ export const prisma =
   new PrismaClient({
     adapter: new PrismaPg({
       connectionString,
-      // Für langlebige Node-Prozesse (next start, Container) passend. Im
-      // Serverless-Betrieb entsteht ein Pool je Instanz — dort auf 1 reduzieren.
-      max: 10,
+      // Für langlebige Node-Prozesse (next start, Container) sind 10 passend.
+      // Auf Vercel entsteht ein Pool je Instanz — dort klein halten, aber
+      // nicht 1: Fluid Compute fährt mehrere Anfragen je Instanz, und eine
+      // einzige Verbindung legte deren parallele Abfragen wieder hintereinander.
+      max: process.env.VERCEL ? 3 : 10,
     }),
   })
 
